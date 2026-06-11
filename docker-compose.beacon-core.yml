@@ -1,0 +1,28 @@
+name: beacon
+
+services:
+  beacon:
+    image: ghcr.io/andrewleaman-stack/beacon:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: beacon
+    ports:
+      - "${BEACON_PORT:-3011}:3000"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      NODE_OPTIONS: --dns-result-order=ipv4first
+      NODE_ENV: production
+      PORT: "3000"
+      HOSTNAME: 0.0.0.0
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "node", "scripts/healthcheck.mjs"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 45s
+    restart: unless-stopped

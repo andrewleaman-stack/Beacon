@@ -23,6 +23,12 @@ services:
       - NODE_ENV=production
       - PORT=3000
       - HOSTNAME=0.0.0.0
+    healthcheck:
+      test: ["CMD", "node", "scripts/healthcheck.mjs"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 45s
     extra_hosts:
       - "host.docker.internal:host-gateway"
     restart: unless-stopped
@@ -81,10 +87,10 @@ x-casaos:
     en_us: Real-time global intelligence & situational awareness
   title:
     en_us: BEACON
-  icon: https://raw.githubusercontent.com/andrewleaman-stack/Beacon/master/public/casaos-icon.png
-  thumbnail: https://raw.githubusercontent.com/andrewleaman-stack/Beacon/master/public/og-image.png
+  icon: https://raw.githubusercontent.com/andrewleaman-stack/Beacon/main/public/casaos-icon.png
+  thumbnail: https://raw.githubusercontent.com/andrewleaman-stack/Beacon/main/public/og-image.png
   screenshot_link:
-    - https://raw.githubusercontent.com/andrewleaman-stack/Beacon/master/public/og-image.png
+    - https://raw.githubusercontent.com/andrewleaman-stack/Beacon/main/public/og-image.png
   scheme: http
   hostname: ""
   port_map: "3000"

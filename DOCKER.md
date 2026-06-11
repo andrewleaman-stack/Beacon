@@ -15,10 +15,18 @@ Default URL: <http://localhost:3000>
 Use a different host port:
 
 ```env
-BEACON_PORT=3010
+BEACON_PORT=3011
 ```
 
-Then restart:
+For beacon-core, use the lean Pi deployment file instead of the full local stack:
+
+```bash
+docker compose -f docker-compose.beacon-core.yml up -d --build
+```
+
+See [`docs/deploy/beacon-core.md`](docs/deploy/beacon-core.md).
+
+For the default local stack, restart after changing `.env`:
 
 ```bash
 docker compose up -d

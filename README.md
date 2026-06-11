@@ -60,8 +60,10 @@ Default URL: <http://localhost:3000>
 Change the published host port with:
 
 ```env
-BEACON_PORT=3010
+BEACON_PORT=3011
 ```
+
+For the beacon-core Raspberry Pi deployment plan, use `docker-compose.beacon-core.yml` and see [`docs/deploy/beacon-core.md`](docs/deploy/beacon-core.md).
 
 ## Environment
 
@@ -79,12 +81,13 @@ Start with `.env.template`. The important variables are:
 ## Verification
 
 ```bash
-npm run build
-npx tsc --noEmit
 npm run lint
+npm run typecheck
+npm run build
+npm run smoke
 ```
 
-Current known issue: inherited lint debt is large, mostly `@typescript-eslint/no-explicit-any` and old CommonJS helper scripts. Build and TypeScript validation pass; lint is not clean yet.
+CI runs these checks on every push/PR and includes a production-server smoke test.
 
 ## Safety notes
 
