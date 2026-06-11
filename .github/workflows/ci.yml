@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate BEACON
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.13.0'
+          cache: npm
+
+      - name: Install dependencies
+        # Keep dependency install scripts disabled in CI unless we explicitly need them.
+        # This reduces supply-chain risk; BEACON currently builds cleanly without install hooks.
+        run: npm ci --ignore-scripts
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      - name: Start server
+        env:
+          PORT: '3011'
+        run: |
+          npm run start > /tmp/beacon-next.log 2>&1 &
+          echo $! > /tmp/beacon-next.pid
+
+      - name: Smoke test
+        env:
+          BEACON_BASE_URL: http://127.0.0.1:3011
+          SMOKE_TIMEOUT_MS: '45000'
+        run: npm run smoke
+
+      - name: Print server log on failure
+        if: failure()
+        run: |
+          cat /tmp/beacon-next.log || true
