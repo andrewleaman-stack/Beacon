@@ -109,7 +109,7 @@ function EntityGraphPanel({ entity, onClose }: Props) {
     setSelectedNode(root);
     setError(null);
     expandEntity(entity.type, entity.id, entity.properties);
-  }, [entity]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [entity]);
 
   const handleNodeClick = useCallback((node: any) => {
     const n = node as EntityNode;
