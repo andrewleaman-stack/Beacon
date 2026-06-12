@@ -39,11 +39,11 @@ test('buildFeedHealthSnapshot summarizes current BEACON cache state', () => {
   });
 
   assert.equal(snapshot.platform, 'BEACON');
-  assert.equal(snapshot.summary.totalFeeds, 9);
+  assert.equal(snapshot.summary.totalFeeds, 10);
   assert.equal(snapshot.summary.healthy, 2);
   assert.equal(snapshot.summary.offline, 1);
   assert.equal(snapshot.summary.stale, 1);
-  assert.equal(snapshot.summary.idle, 5);
+  assert.equal(snapshot.summary.idle, 6);
   assert.equal(snapshot.summary.activeFeeds, 4);
   assert.equal(snapshot.status, 'degraded');
 
@@ -52,6 +52,7 @@ test('buildFeedHealthSnapshot summarizes current BEACON cache state', () => {
   assert.equal(byKey.earthquakes.status, 'healthy');
   assert.equal(byKey.gdelt.status, 'offline');
   assert.equal(byKey.maritime.status, 'stale');
+  assert.equal(byKey.nws_alerts.status, 'idle');
   assert.equal(byKey.openmhz.status, 'idle');
 });
 
