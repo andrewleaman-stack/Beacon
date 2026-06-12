@@ -15,6 +15,7 @@ const FEED_PROBES = [
   { path: '/api/openmhz', timeoutMs: 5_000, pick: (payload: any) => ({ openmhz: payload.feeds || [] }) },
   { path: '/api/fires', timeoutMs: 5_000, pick: (payload: any) => ({ fires: payload.fires || [] }) },
   { path: '/api/infrastructure-incidents', timeoutMs: 5_000, pick: (payload: any) => ({ infra_incidents: payload.incidents || [] }) },
+  { path: '/api/cyber-cve', timeoutMs: 5_000, pick: (payload: any) => ({ cyber_cve: payload.cves || [] }) },
 ];
 
 const DEFAULT_ACTIVE_LAYERS = {
@@ -29,6 +30,7 @@ const DEFAULT_ACTIVE_LAYERS = {
   nws_alerts: false,
   fires: false,
   infra_incidents: false,
+  cyber_cve: false,
   openmhz: false,
 };
 function hasEventTime(item: Record<string, unknown>) {
