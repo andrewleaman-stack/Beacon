@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Layers, BarChart3, Newspaper, Search, X, Globe, MapPinned, Radar, Satellite, Moon, ExternalLink, AlertTriangle, Activity, Database, Wifi, Play, Network } from 'lucide-react';
+import { Layers, BarChart3, Newspaper, Search, X, Globe, MapPinned, Radar, Satellite, Moon, ExternalLink, AlertTriangle, Activity, Database, Wifi, Play, Network, PanelLeft } from 'lucide-react';
 import IntelFeed from '@/components/IntelFeed';
 import MarketsPanel from '@/components/MarketsPanel';
 import ScmPanel from '@/components/ScmPanel';
@@ -16,6 +16,7 @@ import KeyboardShortcuts from '@/components/KeyboardShortcuts';
 import GlobalStatusBar from '@/components/GlobalStatusBar';
 import LiveAlerts from '@/components/LiveAlerts';
 import LowerDrawer from '@/components/LowerDrawer';
+import RightDrawer from '@/components/RightDrawer';
 
 const BeaconMap = dynamic(() => import('@/components/BeaconMap'), { ssr: false });
 const LayerPanel = dynamic(() => import('@/components/LayerPanel'));
@@ -116,6 +117,11 @@ export default function Dashboard() {
   const [scanTargets, setScanTargets] = useState<any[]>([]);
   const [entityGraphTarget, setEntityGraphTarget] = useState<{ type: string; id: string; label?: string; properties?: Record<string, any> } | null>(null);
   const [demoMode, setDemoMode] = useState(false);
+
+  // Right drawer state
+  const [showRightDrawer, setShowRightDrawer] = useState(false);
+  const [rightDrawerEntity, setRightDrawerEntity] = useState<{ type: 'aircraft'|'vessel'|'ip'|'country'|'cctv'|'earthquake'|'gdelt'|'news'|'infrastructure'; id: string; label: string; properties?: Record<string, any>; coords?: { lat: number; lng: number } } | null>(null);
+  const [rightDrawerRecon, setRightDrawerRecon] = useState<any[]>([]);
 
   const isMobile = useIsMobile();
   const startTime = useRef(Date.now());
@@ -277,6 +283,17 @@ export default function Dashboard() {
       setLiveFeedName(entity.name);
       setLiveFeedEmbedAllowed(entity.embed_allowed !== false);
     }
+    // Open right drawer for any entity with coords or properties
+    if (entity && (entity.lat || entity.lng || entity.coords || entity.properties)) {
+      setRightDrawerEntity({
+        type: entity.type || 'unknown',
+        id: entity.id || entity.callsign || entity.icao24 || entity.mmsi || entity.name || 'unknown',
+        label: entity.name || entity.callsign || entity.label || entity.id || 'Unknown',
+        properties: entity.properties || entity,
+        coords: entity.coords || (entity.lat && entity.lng ? { lat: entity.lat, lng: entity.lng } : undefined),
+      });
+      setShowRightDrawer(true);
+    }
   }, []);
 
   // Global handler for map popups to manually open the Intel Graph
@@ -285,15 +302,45 @@ export default function Dashboard() {
       if (entity?.callsign || entity?.icao24) {
         setEntityGraphTarget({ type: 'aircraft', id: entity.callsign?.trim() || entity.icao24, label: entity.callsign?.trim() || entity.icao24, properties: { model: entity.model, registration: entity.registration, icao24: entity.icao24 } });
         setShowEntityGraph(true);
+        setRightDrawerEntity({
+          type: 'aircraft',
+          id: entity.callsign?.trim() || entity.icao24,
+          label: entity.callsign?.trim() || entity.icao24,
+          properties: { model: entity.model, registration: entity.registration, icao24: entity.icao24 },
+          coords: entity.lat && entity.lng ? { lat: entity.lat, lng: entity.lng } : undefined,
+        });
+        setShowRightDrawer(true);
       } else if (entity?.type === 'vessel' || entity?.mmsi || entity?.imo) {
         setEntityGraphTarget({ type: 'vessel', id: entity.imo || entity.mmsi || entity.name, label: entity.name || entity.imo, properties: { flag: entity.flag, speed: entity.speed, destination: entity.destination } });
         setShowEntityGraph(true);
+        setRightDrawerEntity({
+          type: 'vessel',
+          id: entity.imo || entity.mmsi || entity.name,
+          label: entity.name || entity.imo,
+          properties: { flag: entity.flag, speed: entity.speed, destination: entity.destination },
+          coords: entity.lat && entity.lng ? { lat: entity.lat, lng: entity.lng } : undefined,
+        });
+        setShowRightDrawer(true);
       } else if (entity?.type === 'ip' && entity?.ip) {
         setEntityGraphTarget({ type: 'ip', id: entity.ip, label: entity.ip, properties: { threat_type: entity.threat_type, status: entity.status } });
         setShowEntityGraph(true);
+        setRightDrawerEntity({
+          type: 'ip',
+          id: entity.ip,
+          label: entity.ip,
+          properties: { threat_type: entity.threat_type, status: entity.status },
+        });
+        setShowRightDrawer(true);
       } else if (entity?.type === 'country' && entity?.country) {
         setEntityGraphTarget({ type: 'country', id: entity.country, label: entity.country, properties: {} });
         setShowEntityGraph(true);
+        setRightDrawerEntity({
+          type: 'country',
+          id: entity.country,
+          label: entity.country,
+          properties: {},
+        });
+        setShowRightDrawer(true);
       }
     };
     return () => { delete (window as any).openBeaconIntel; };
@@ -915,6 +962,12 @@ export default function Dashboard() {
             <Network className={`w-4 h-4 ${showEntityGraph ? 'text-[#D4AF37]' : 'text-white/60'}`} />
           </button>
         </div>
+
+        <div className="relative group">
+          <button onClick={() => { setShowRightDrawer(!showRightDrawer); setShowIntel(false); setShowMarkets(false); setShowAlerts(false); setShowEntityGraph(false); }} className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${showRightDrawer ? 'bg-[var(--gold-primary)]/20' : 'hover:bg-white/10'}`}>
+            <PanelLeft className={`w-4 h-4 ${showRightDrawer ? 'text-[var(--gold-primary)]' : 'text-white/60'}`} />
+          </button>
+        </div>
       </div>}
 
       {/* ── LIVE FEED VIEWER OVERLAY ── */}
@@ -1155,6 +1208,15 @@ export default function Dashboard() {
           onClose={() => setShowEntityGraph(false)}
         />
       )}
+
+      {/* ── Right Analyst Drawer ── */}
+      <RightDrawer
+        open={showRightDrawer}
+        onClose={() => setShowRightDrawer(false)}
+        entityRef={rightDrawerEntity}
+        reconResults={rightDrawerRecon}
+        beaconData={data}
+      />
 
       {/* ── OVERLAYS ── */}
       <div className="vignette absolute inset-0 pointer-events-none z-[2]" />
