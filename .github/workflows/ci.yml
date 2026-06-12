@@ -38,6 +38,9 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Feed health unit tests
+        run: npm run test:feed-health
+
       - name: Typecheck
         run: npm run typecheck
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Activity, AlertTriangle, ChevronDown, ChevronUp, Database, Radio, ShieldAlert, Wifi } from 'lucide-react';
 
@@ -13,6 +13,29 @@ interface LowerDrawerProps {
   mapView: { zoom: number; latitude: number };
   open: boolean;
   onToggle: () => void;
+}
+
+interface FeedHealthSnapshot {
+  status: 'operational' | 'degraded' | 'offline';
+  checkedAt: string;
+  summary: {
+    totalFeeds: number;
+    activeFeeds: number;
+    totalRecords: number;
+    healthy: number;
+    stale: number;
+    offline: number;
+    idle: number;
+  };
+  feeds: Array<{
+    key: string;
+    label: string;
+    status: 'healthy' | 'stale' | 'offline' | 'idle';
+    active: boolean;
+    count: number;
+    lastEventAt: string | null;
+    ageSeconds: number | null;
+  }>;
 }
 
 function asArray(value: unknown): unknown[] {
@@ -54,19 +77,48 @@ function severityTone(count: number): string {
   return 'text-[var(--alert-green)] border-[var(--alert-green)]/20 bg-[var(--alert-green)]/10';
 }
 
+function feedDot(status?: string): string {
+  if (status === 'healthy') return 'bg-[var(--alert-green)] shadow-[0_0_8px_var(--alert-green)]';
+  if (status === 'stale') return 'bg-[#FF9500] shadow-[0_0_8px_#FF9500]';
+  if (status === 'offline') return 'bg-[#FF3D3D] shadow-[0_0_8px_#FF3D3D]';
+  return 'bg-white/20';
+}
+
 export default function LowerDrawer({ data, activeLayers, backendStatus, mapView, open, onToggle }: LowerDrawerProps) {
   const [tab, setTab] = useState<DrawerTab>('feed');
+  const [feedHealth, setFeedHealth] = useState<FeedHealthSnapshot | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    const fetchHealth = async () => {
+      try {
+        const response = await fetch('/api/feed-health', { cache: 'no-store' });
+        if (!response.ok) return;
+        const snapshot = await response.json();
+        if (!cancelled) setFeedHealth(snapshot);
+      } catch (error) {
+        console.warn('[BEACON] Feed health fetch failed:', error instanceof Error ? error.message : error);
+      }
+    };
+    fetchHealth();
+    const interval = setInterval(fetchHealth, 60_000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [open]);
 
   const model = useMemo(() => {
     const feeds = [
-      { key: 'news', label: 'OSINT NEWS', count: asArray(data.news).length, latest: latestTimestamp(asArray(data.news)), layer: activeLayers.news_intel },
-      { key: 'gdelt', label: 'GDELT EVENTS', count: asArray(data.gdelt).length, latest: latestTimestamp(asArray(data.gdelt)), layer: activeLayers.global_incidents },
-      { key: 'earthquakes', label: 'USGS QUAKES', count: asArray(data.earthquakes).length, latest: latestTimestamp(asArray(data.earthquakes)), layer: activeLayers.earthquakes },
-      { key: 'maritime', label: 'MARITIME AIS', count: asArray(data.maritime_ships).length + asArray(data.maritime_ports).length + asArray(data.maritime_chokepoints).length, latest: latestTimestamp(asArray(data.maritime_ships)), layer: activeLayers.maritime },
-      { key: 'live', label: 'LIVE FEEDS', count: asArray(data.live_feeds).length, latest: latestTimestamp(asArray(data.live_feeds)), layer: activeLayers.live_news },
-      { key: 'infra', label: 'INFRASTRUCTURE', count: asArray(data.infrastructure).length, latest: latestTimestamp(asArray(data.infrastructure)), layer: activeLayers.infrastructure },
-      { key: 'weather', label: 'WEATHER', count: asArray(data.weather_events).length, latest: latestTimestamp(asArray(data.weather_events)), layer: activeLayers.weather },
-      { key: 'radiation', label: 'RADIATION', count: asArray(data.radiation).length, latest: latestTimestamp(asArray(data.radiation)), layer: activeLayers.radiation },
+      { key: 'news', label: 'OSINT NEWS', count: asArray(data.news).length, latest: latestTimestamp(asArray(data.news)), layer: activeLayers.news_intel, status: undefined as string | undefined, ageSeconds: null as number | null },
+      { key: 'gdelt', label: 'GDELT EVENTS', count: asArray(data.gdelt).length, latest: latestTimestamp(asArray(data.gdelt)), layer: activeLayers.global_incidents, status: undefined as string | undefined, ageSeconds: null as number | null },
+      { key: 'earthquakes', label: 'USGS QUAKES', count: asArray(data.earthquakes).length, latest: latestTimestamp(asArray(data.earthquakes)), layer: activeLayers.earthquakes, status: undefined as string | undefined, ageSeconds: null as number | null },
+      { key: 'maritime', label: 'MARITIME AIS', count: asArray(data.maritime_ships).length + asArray(data.maritime_ports).length + asArray(data.maritime_chokepoints).length, latest: latestTimestamp(asArray(data.maritime_ships)), layer: activeLayers.maritime, status: undefined as string | undefined, ageSeconds: null as number | null },
+      { key: 'live_news', label: 'LIVE FEEDS', count: asArray(data.live_feeds).length, latest: latestTimestamp(asArray(data.live_feeds)), layer: activeLayers.live_news, status: undefined as string | undefined, ageSeconds: null as number | null },
+      { key: 'infrastructure', label: 'INFRASTRUCTURE', count: asArray(data.infrastructure).length, latest: latestTimestamp(asArray(data.infrastructure)), layer: activeLayers.infrastructure, status: undefined as string | undefined, ageSeconds: null as number | null },
+      { key: 'weather', label: 'WEATHER', count: asArray(data.weather_events).length, latest: latestTimestamp(asArray(data.weather_events)), layer: activeLayers.weather, status: undefined as string | undefined, ageSeconds: null as number | null },
+      { key: 'radiation', label: 'RADIATION', count: asArray(data.radiation).length, latest: latestTimestamp(asArray(data.radiation)), layer: activeLayers.radiation, status: undefined as string | undefined, ageSeconds: null as number | null },
     ];
 
     const activeFeedCount = feeds.filter(feed => feed.layer).length;
@@ -103,9 +155,26 @@ export default function LowerDrawer({ data, activeLayers, backendStatus, mapView
     return { feeds, activeFeedCount, totalRecords, rawEntries, alerts };
   }, [data, activeLayers]);
 
+  const healthFeeds = useMemo(() => {
+    if (!feedHealth) return model.feeds;
+    return feedHealth.feeds.map(feed => ({
+      key: feed.key,
+      label: feed.label.toUpperCase(),
+      count: feed.count,
+      latest: feed.lastEventAt ? new Date(feed.lastEventAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—',
+      layer: feed.active,
+      status: feed.status,
+      ageSeconds: feed.ageSeconds,
+    }));
+  }, [feedHealth, model.feeds]);
+
+  const activeFeedCount = feedHealth?.summary.activeFeeds ?? model.activeFeedCount;
+  const totalRecords = feedHealth?.summary.totalRecords ?? model.totalRecords;
+  const operationalStatus = feedHealth?.status ?? (backendStatus === 'connected' ? 'operational' : backendStatus);
+
   const tabs: { id: DrawerTab; label: string; icon: typeof Activity; badge?: string }[] = [
-    { id: 'feed', label: 'FEED CONSOLE', icon: Radio, badge: shortNumber(model.totalRecords) },
-    { id: 'health', label: 'HEALTH', icon: Wifi, badge: backendStatus.toUpperCase() },
+    { id: 'feed', label: 'FEED CONSOLE', icon: Radio, badge: shortNumber(totalRecords) },
+    { id: 'health', label: 'HEALTH', icon: Wifi, badge: operationalStatus.toUpperCase() },
     { id: 'raw', label: 'RAW EVENTS', icon: Database, badge: String(model.rawEntries.length) },
     { id: 'alerts', label: 'WATCHLIST', icon: ShieldAlert, badge: String(model.alerts.length) },
   ];
@@ -121,7 +190,7 @@ export default function LowerDrawer({ data, activeLayers, backendStatus, mapView
         >
           <Activity className="w-3.5 h-3.5" />
           <span>OPS DRAWER</span>
-          <span className="text-[var(--text-muted)]/60">{model.activeFeedCount} ACTIVE</span>
+          <span className="text-[var(--text-muted)]/60">{activeFeedCount} ACTIVE</span>
           {open ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
         </button>
       </div>
@@ -158,14 +227,14 @@ export default function LowerDrawer({ data, activeLayers, backendStatus, mapView
                 <div className="flex-1 min-w-0 p-3 overflow-y-auto styled-scrollbar">
                   {tab === 'feed' && (
                     <div className="grid grid-cols-2 xl:grid-cols-4 gap-2">
-                      {model.feeds.map(feed => (
+                      {healthFeeds.map(feed => (
                         <div key={feed.key} className={`rounded border p-3 ${feed.layer ? 'border-[var(--cyan-primary)]/25 bg-[var(--cyan-primary)]/5' : 'border-white/10 bg-white/[0.02]'}`}>
                           <div className="flex items-center justify-between mb-3">
                             <span className="text-[9px] font-mono tracking-widest text-white/70">{feed.label}</span>
-                            <span className={`w-2 h-2 rounded-full ${feed.layer ? 'bg-[var(--alert-green)] shadow-[0_0_8px_var(--alert-green)]' : 'bg-white/20'}`} />
+                            <span className={`w-2 h-2 rounded-full ${feedDot(feed.status)}`} />
                           </div>
                           <div className="text-2xl font-mono font-bold text-[var(--gold-primary)] tabular-nums">{shortNumber(feed.count)}</div>
-                          <div className="mt-2 text-[8px] font-mono text-white/40">LAST EVENT {feed.latest}</div>
+                          <div className="mt-2 text-[8px] font-mono text-white/40">LAST EVENT {feed.latest}{feed.ageSeconds != null ? ` · ${Math.round(feed.ageSeconds / 60)}M AGO` : ''}</div>
                         </div>
                       ))}
                     </div>
@@ -174,20 +243,28 @@ export default function LowerDrawer({ data, activeLayers, backendStatus, mapView
                   {tab === 'health' && (
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 text-[10px] font-mono">
                       <div className="rounded border border-white/10 bg-white/[0.03] p-4">
-                        <div className="hud-label mb-2">BACKEND</div>
-                        <div className={`text-xl font-bold ${backendStatus === 'connected' ? 'text-[var(--alert-green)]' : backendStatus === 'connecting' ? 'text-[#FF9500]' : 'text-[#FF3D3D]'}`}>{backendStatus.toUpperCase()}</div>
-                        <div className="mt-2 text-white/40">Browser-facing fetch state from live requests.</div>
+                        <div className="hud-label mb-2">FEED HEALTH</div>
+                        <div className={`text-xl font-bold ${operationalStatus === 'operational' ? 'text-[var(--alert-green)]' : operationalStatus === 'degraded' ? 'text-[#FF9500]' : 'text-[#FF3D3D]'}`}>{operationalStatus.toUpperCase()}</div>
+                        <div className="mt-2 text-white/40">Server-side probe snapshot{feedHealth ? ` · ${new Date(feedHealth.checkedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ' pending'}.</div>
                       </div>
                       <div className="rounded border border-white/10 bg-white/[0.03] p-4">
-                        <div className="hud-label mb-2">ACTIVE LAYERS</div>
-                        <div className="text-xl font-bold text-[var(--cyan-primary)]">{Object.values(activeLayers).filter(Boolean).length}</div>
-                        <div className="mt-2 text-white/40">Layer toggles currently driving fetches and map paint.</div>
+                        <div className="hud-label mb-2">ACTIVE FEEDS</div>
+                        <div className="text-xl font-bold text-[var(--cyan-primary)]">{activeFeedCount}</div>
+                        <div className="mt-2 text-white/40">Configured feed probes currently treated as operationally relevant.</div>
                       </div>
                       <div className="rounded border border-white/10 bg-white/[0.03] p-4">
-                        <div className="hud-label mb-2">LOCAL EVENTS</div>
-                        <div className="text-xl font-bold text-[var(--gold-primary)]">{shortNumber(model.totalRecords)}</div>
-                        <div className="mt-2 text-white/40">Counted from in-memory dashboard data, not decorative nonsense.</div>
+                        <div className="hud-label mb-2">EVENT CACHE</div>
+                        <div className="text-xl font-bold text-[var(--gold-primary)]">{shortNumber(totalRecords)}</div>
+                        <div className="mt-2 text-white/40">Server probe totals with local fallback. Still not decorative nonsense.</div>
                       </div>
+                      {feedHealth && (
+                        <div className="lg:col-span-3 rounded border border-white/10 bg-black/30 p-3 grid grid-cols-4 gap-2">
+                          <div><div className="hud-label">HEALTHY</div><div className="text-[var(--alert-green)] text-lg font-bold">{feedHealth.summary.healthy}</div></div>
+                          <div><div className="hud-label">STALE</div><div className="text-[#FF9500] text-lg font-bold">{feedHealth.summary.stale}</div></div>
+                          <div><div className="hud-label">OFFLINE</div><div className="text-[#FF3D3D] text-lg font-bold">{feedHealth.summary.offline}</div></div>
+                          <div><div className="hud-label">IDLE</div><div className="text-white/40 text-lg font-bold">{feedHealth.summary.idle}</div></div>
+                        </div>
+                      )}
                     </div>
                   )}
 
