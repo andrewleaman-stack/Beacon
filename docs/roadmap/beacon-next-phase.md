@@ -51,23 +51,26 @@ Deliverables:
 
 Priority candidates:
 - **OpenMHz / P25** — Monroe-area public safety. *Feed module prepared; not yet live (requires scanner hardware / stream access).*
-- Weather alerts / NWS / SPC.
-- Fires and infrastructure incidents.
-- Cyber / CVE alerts.
+- **Weather alerts / NWS / SPC** — ✅ Live (api.weather.gov active alerts)
+- **Fires and infrastructure incidents** — ✅ Added (NASA FIRMS, PHMSA/NRC/DOE/USACE sample data)
+- **Cyber / CVE alerts** — ✅ Added (NVD, CISA KEV, GHSA, OSV sample data)
 - Aviation / ADS-B if useful.
 - Local Monroe / regional public-safety sources.
+
+**Status:** ✅ Core feed modules complete — deployed at `http://100.72.12.80:3011`
 
 ## Phase 5 — AI Briefing Engine
 
 **Objective:** Generate source-grounded briefs, not magic dashboard poetry.
 
 Deliverables:
-- Generate brief button.
+- Generate brief button (wired from placeholder panel).
 - Daily or shift brief.
 - Incident brief.
-- “What changed since last check?” summary.
+- "What changed since last check?" summary.
 - Confidence and uncertainty markers.
-- Groq/OpenRouter integration.
+- **Auto-translation for non-English feed items** (LibreTranslate / Google Translate API / local model).
+- Groq/OpenRouter integration (primary LLM provider).
 
 ## Phase 6 — Watchlists and Alerts
 
@@ -139,5 +142,9 @@ Rules:
 3. ✅ Fix or tune the GDELT timeout.
 4. ✅ Build right drawer panel registry.
 5. **Prepare OpenMHz/P25 feed module (offline-ready, activate when stream available).**
-6. Add weather alerts / NWS / SPC feed module.
-7. Add source-grounded AI briefs.
+6. ✅ Add weather alerts / NWS / SPC feed module.
+7. ✅ Add fires and infrastructure incidents feed modules.
+8. ✅ Add cyber / CVE alerts feed module.
+9. **AI Briefing Engine with Groq/OpenRouter + auto-translation** (Phase 5).
+10. **Watchlists and Alerts** (Phase 6).
+11. Persistence Layer (Phase 7).
