@@ -14,21 +14,6 @@ interface EntityDetailsPanelProps {
   beaconData: Record<string, unknown>;
 }
 
-const ICON_MAP: Record<string, typeof MapPin> = {
-  aircraft: Plane,
-  vessel: Anchor,
-  cctv: Video,
-  earthquake: Zap,
-  country: Globe,
-  ip: Search,
-  gdelt: AlertTriangle,
-  infrastructure: Database,
-};
-
-function getIconForType(type: string) {
-  return ICON_MAP[type] ?? MapPin;
-}
-
 function formatValue(key: string, value: unknown): string {
   if (value === null || value === undefined) return '—';
   if (typeof value === 'object') return JSON.stringify(value);
@@ -41,8 +26,17 @@ function formatValue(key: string, value: unknown): string {
 }
 
 function EntityTypeIcon({ type }: { type: string }) {
-  const C = getIconForType(type);
-  return <C className="w-5 h-5 text-[var(--cyan-primary)]" />;
+  switch (type) {
+    case 'aircraft': return <Plane className="w-5 h-5 text-[var(--cyan-primary)]" />;
+    case 'vessel': return <Anchor className="w-5 h-5 text-[var(--cyan-primary)]" />;
+    case 'cctv': return <Video className="w-5 h-5 text-[var(--cyan-primary)]" />;
+    case 'earthquake': return <Zap className="w-5 h-5 text-[var(--cyan-primary)]" />;
+    case 'country': return <Globe className="w-5 h-5 text-[var(--cyan-primary)]" />;
+    case 'ip': return <Search className="w-5 h-5 text-[var(--cyan-primary)]" />;
+    case 'gdelt': return <AlertTriangle className="w-5 h-5 text-[var(--cyan-primary)]" />;
+    case 'infrastructure': return <Database className="w-5 h-5 text-[var(--cyan-primary)]" />;
+    default: return <MapPin className="w-5 h-5 text-[var(--cyan-primary)]" />;
+  }
 }
 
 export default function EntityDetailsPanel({ entity, beaconData }: EntityDetailsPanelProps) {
