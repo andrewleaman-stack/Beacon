@@ -14,18 +14,19 @@ interface EntityDetailsPanelProps {
   beaconData: Record<string, unknown>;
 }
 
+const ICON_MAP: Record<string, typeof MapPin> = {
+  aircraft: Plane,
+  vessel: Anchor,
+  cctv: Video,
+  earthquake: Zap,
+  country: Globe,
+  ip: Search,
+  gdelt: AlertTriangle,
+  infrastructure: Database,
+};
+
 function getIconForType(type: string) {
-  switch (type) {
-    case 'aircraft': return Plane;
-    case 'vessel': return Anchor;
-    case 'cctv': return Video;
-    case 'earthquake': return Zap;
-    case 'country': return Globe;
-    case 'ip': return Search;
-    case 'gdelt': return AlertTriangle;
-    case 'infrastructure': return Database;
-    default: return MapPin;
-  }
+  return ICON_MAP[type] ?? MapPin;
 }
 
 function formatValue(key: string, value: unknown): string {
@@ -40,8 +41,6 @@ function formatValue(key: string, value: unknown): string {
 }
 
 export default function EntityDetailsPanel({ entity, beaconData }: EntityDetailsPanelProps) {
-  const Icon = getIconForType(entity.type);
-
   const sections = useMemo(() => {
     const props = entity.properties || {};
     const entries = Object.entries(props);
@@ -62,7 +61,7 @@ export default function EntityDetailsPanel({ entity, beaconData }: EntityDetails
     <div className="glass-panel p-4 h-full overflow-y-auto styled-scrollbar">
       <div className="flex items-start gap-3 mb-4">
         <div className="w-10 h-10 rounded-lg bg-[var(--cyan-primary)]/20 flex items-center justify-center flex-shrink-0">
-          <Icon className="w-5 h-5 text-[var(--cyan-primary)]" />
+          {(() => { const C = getIconForType(entity.type); return <C className="w-5 h-5 text-[var(--cyan-primary)]" />; })()}
         </div>
         <div className="min-w-0 flex-1">
           <h3 className="text-sm font-mono font-bold text-white tracking-wider">{entity.label}</h3>
