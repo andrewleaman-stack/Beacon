@@ -40,7 +40,7 @@ function formatValue(key: string, value: unknown): string {
 }
 
 export default function EntityDetailsPanel({ entity, beaconData }: EntityDetailsPanelProps) {
-  const Icon = useMemo(() => getIconForType(entity.type), [entity.type]);
+  const Icon = getIconForType(entity.type);
 
   const sections = useMemo(() => {
     const props = entity.properties || {};

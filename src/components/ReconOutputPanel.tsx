@@ -34,6 +34,11 @@ function formatFinding(key: string, value: unknown): string {
 }
 
 export default function ReconOutputPanel({ reconResults }: ReconOutputPanelProps) {
+  const sortedResults = useMemo(() =>
+    [...reconResults].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()),
+    [reconResults]
+  );
+
   if (!reconResults.length) {
     return (
       <div className="glass-panel p-8 h-full flex items-center justify-center">
@@ -45,11 +50,6 @@ export default function ReconOutputPanel({ reconResults }: ReconOutputPanelProps
       </div>
     );
   }
-
-  const sortedResults = useMemo(() => 
-    [...reconResults].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()),
-    [reconResults]
-  );
 
   return (
     <div className="glass-panel p-4 h-full overflow-y-auto styled-scrollbar">

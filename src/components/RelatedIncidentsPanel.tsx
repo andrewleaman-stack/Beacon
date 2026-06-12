@@ -75,8 +75,10 @@ function severityStyle(sev: string) {
 }
 
 export default function RelatedIncidentsPanel({ entity, beaconData, radiusKm = 100 }: RelatedIncidentsPanelProps) {
+  const entityCoords = entity?.coords ?? null;
+
   const incidents = useMemo(() => {
-    if (!entity?.coords) return [];
+    if (!entityCoords) return [];
     
     const sources = [
       { key: 'earthquakes', data: beaconData.earthquakes, type: 'earthquake' as const },
@@ -93,7 +95,7 @@ export default function RelatedIncidentsPanel({ entity, beaconData, radiusKm = 1
         const coords = getCoords(record);
         if (!coords) continue;
         
-        const dist = haversineDistance(entity.coords.lat, entity.coords.lng, coords.lat, coords.lng);
+        const dist = haversineDistance(entityCoords.lat, entityCoords.lng, coords.lat, coords.lng);
         if (dist > radiusKm) continue;
         
         const time = getTime(record);
@@ -117,9 +119,9 @@ export default function RelatedIncidentsPanel({ entity, beaconData, radiusKm = 1
     return results
       .sort((a, b) => a.distance - b.distance)
       .slice(0, 15);
-  }, [entity?.coords, beaconData, radiusKm]);
+  }, [entityCoords, beaconData, radiusKm]);
 
-  if (!entity?.coords) {
+  if (!entityCoords) {
     return (
       <div className="glass-panel p-8 h-full flex items-center justify-center">
         <div className="text-center text-white/40">
