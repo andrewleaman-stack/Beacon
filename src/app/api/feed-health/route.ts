@@ -4,13 +4,13 @@ import { buildFeedHealthSnapshot } from '@/lib/feed-health.mjs';
 export const dynamic = 'force-dynamic';
 
 const FEED_PROBES = [
-  { path: '/api/news', pick: (payload: any) => ({ news: payload.news || [] }) },
-  { path: '/api/earthquakes', pick: (payload: any) => ({ earthquakes: payload.earthquakes || [] }) },
-  { path: '/api/gdelt', pick: (payload: any) => ({ gdelt: payload.events || payload.gdelt || [] }) },
-  { path: '/api/maritime', pick: (payload: any) => ({ maritime_ships: payload.ships || [], maritime_ports: payload.ports || [], maritime_chokepoints: payload.chokepoints || [] }) },
-  { path: '/api/live-news', pick: (payload: any) => ({ live_feeds: payload.feeds || [] }) },
-  { path: '/api/infrastructure', pick: (payload: any) => ({ infrastructure: payload.infrastructure || [] }) },
-  { path: '/api/weather', pick: (payload: any) => ({ weather_events: payload.events || [] }) },
+  { path: '/api/news', timeoutMs: 5_000, pick: (payload: any) => ({ news: payload.news || [] }) },
+  { path: '/api/earthquakes', timeoutMs: 5_000, pick: (payload: any) => ({ earthquakes: payload.earthquakes || [] }) },
+  { path: '/api/gdelt', timeoutMs: 12_000, pick: (payload: any) => ({ gdelt: payload.events || payload.gdelt || [] }) },
+  { path: '/api/maritime', timeoutMs: 5_000, pick: (payload: any) => ({ maritime_ships: payload.ships || [], maritime_ports: payload.ports || [], maritime_chokepoints: payload.chokepoints || [] }) },
+  { path: '/api/live-news', timeoutMs: 5_000, pick: (payload: any) => ({ live_feeds: payload.feeds || [] }) },
+  { path: '/api/infrastructure', timeoutMs: 5_000, pick: (payload: any) => ({ infrastructure: payload.infrastructure || [] }) },
+  { path: '/api/weather', timeoutMs: 5_000, pick: (payload: any) => ({ weather_events: payload.events || [] }) },
 ];
 
 const DEFAULT_ACTIVE_LAYERS = {
@@ -24,9 +24,24 @@ const DEFAULT_ACTIVE_LAYERS = {
   radiation: false,
 };
 
+function hasEventTime(item: Record<string, unknown>) {
+  return Boolean(item.time || item.published || item.pubDate || item.timestamp || item.updated_at || item.last_seen || item.fetchedAt);
+}
+
+function stampProbeData(data: Record<string, unknown>, fetchedAt: string) {
+  return Object.fromEntries(Object.entries(data).map(([key, value]) => {
+    if (!Array.isArray(value)) return [key, value];
+    return [key, value.map((item) => {
+      if (!item || typeof item !== 'object' || hasEventTime(item as Record<string, unknown>)) return item;
+      return { ...(item as Record<string, unknown>), fetchedAt };
+    })];
+  }));
+}
+
 async function probeFeed(origin: string, probe: typeof FEED_PROBES[number]) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 4_000);
+  const timeout = setTimeout(() => controller.abort(), probe.timeoutMs);
+  const fetchedAt = new Date().toISOString();
   try {
     const response = await fetch(`${origin}${probe.path}`, {
       cache: 'no-store',
@@ -35,7 +50,8 @@ async function probeFeed(origin: string, probe: typeof FEED_PROBES[number]) {
     });
     if (!response.ok) return { ok: false, path: probe.path, error: `HTTP ${response.status}`, data: {} };
     const payload = await response.json();
-    return { ok: true, path: probe.path, data: probe.pick(payload) };
+    const data = stampProbeData(probe.pick(payload), String(payload.timestamp || fetchedAt));
+    return { ok: true, path: probe.path, data };
   } catch (error) {
     return { ok: false, path: probe.path, error: error instanceof Error ? error.message : String(error), data: {} };
   } finally {
