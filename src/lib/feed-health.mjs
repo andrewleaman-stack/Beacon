@@ -11,6 +11,7 @@ export const FEED_DEFINITIONS = [
   { key: 'infrastructure', label: 'Infrastructure', dataKeys: ['infrastructure'], layerKey: 'infrastructure', staleAfterMs: 60 * 60_000 },
   { key: 'weather', label: 'Weather', dataKeys: ['weather_events'], layerKey: 'weather', staleAfterMs: 30 * 60_000 },
   { key: 'radiation', label: 'Radiation', dataKeys: ['radiation'], layerKey: 'radiation', staleAfterMs: 5 * 60_000 },
+  { key: 'openmhz', label: 'OpenMHz / P25', dataKeys: ['openmhz'], layerKey: 'openmhz', staleAfterMs: 6 * 60 * 60_000 },
 ];
 
 function asArray(value) {
@@ -61,6 +62,7 @@ function formatAge(ageSeconds) {
 function feedKeyFromProbePath(path) {
   const segment = String(path || '').split('/').filter(Boolean).pop() || '';
   if (segment === 'live-news') return 'live_news';
+  if (segment === 'openmhz') return 'openmhz';
   return segment.replace(/-/g, '_');
 }
 

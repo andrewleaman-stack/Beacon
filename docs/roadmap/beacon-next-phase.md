@@ -43,12 +43,14 @@ Deliverables:
 - Source links and timeline panel.
 - Placeholder AI brief panel wired to real data only.
 
+**Status:** ✅ COMPLETE — deployed at `http://100.72.12.80:3011`
+
 ## Phase 4 — Feed Modules
 
 **Objective:** Add Andrew-specific and operationally useful feeds.
 
 Priority candidates:
-- OpenMHz / P25, especially Monroe-area public safety.
+- **OpenMHz / P25** — Monroe-area public safety. *Feed module prepared; not yet live (requires scanner hardware / stream access).*
 - Weather alerts / NWS / SPC.
 - Fires and infrastructure incidents.
 - Cyber / CVE alerts.
@@ -132,9 +134,10 @@ Rules:
 
 ## Recommended Immediate Sequence
 
-1. Build operational event log into `/api/feed-health`.
-2. Surface feed errors/stale reasons in the lower drawer.
-3. Fix or tune the GDELT timeout.
-4. Build right drawer panel registry.
-5. Add OpenMHz/P25 feed module.
-6. Add source-grounded AI briefs.
+1. ✅ Build operational event log into `/api/feed-health`.
+2. ✅ Surface feed errors/stale reasons in the lower drawer.
+3. ✅ Fix or tune the GDELT timeout.
+4. ✅ Build right drawer panel registry.
+5. **Prepare OpenMHz/P25 feed module (offline-ready, activate when stream available).**
+6. Add weather alerts / NWS / SPC feed module.
+7. Add source-grounded AI briefs.

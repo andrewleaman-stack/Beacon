@@ -60,7 +60,7 @@ export default function AIBriefPlaceholderPanel({ entity, beaconData, onGenerate
           <span>SOURCE-GROUNDED BRIEFING ENGINE</span>
         </div>
         <div className="text-[8px] text-white/60 leading-relaxed space-y-1">
-          <p>This panel will generate intelligence briefings grounded exclusively in BEACON's live data feeds.</p>
+          <p>This panel will generate intelligence briefings grounded exclusively in BEACON&apos;s live data feeds.</p>
           <p className="text-white/40">No hallucination. No external knowledge. Only what the sensors see.</p>
         </div>
       </div>

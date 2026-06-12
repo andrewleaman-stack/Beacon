@@ -11,6 +11,7 @@ const FEED_PROBES = [
   { path: '/api/live-news', timeoutMs: 5_000, pick: (payload: any) => ({ live_feeds: payload.feeds || [] }) },
   { path: '/api/infrastructure', timeoutMs: 5_000, pick: (payload: any) => ({ infrastructure: payload.infrastructure || [] }) },
   { path: '/api/weather', timeoutMs: 5_000, pick: (payload: any) => ({ weather_events: payload.events || [] }) },
+  { path: '/api/openmhz', timeoutMs: 5_000, pick: (payload: any) => ({ openmhz: payload.feeds || [] }) },
 ];
 
 const DEFAULT_ACTIVE_LAYERS = {
@@ -22,6 +23,7 @@ const DEFAULT_ACTIVE_LAYERS = {
   infrastructure: false,
   weather: false,
   radiation: false,
+  openmhz: false,
 };
 
 function hasEventTime(item: Record<string, unknown>) {
