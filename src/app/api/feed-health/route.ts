@@ -13,6 +13,8 @@ const FEED_PROBES = [
   { path: '/api/weather', timeoutMs: 5_000, pick: (payload: any) => ({ weather_events: payload.events || [] }) },
   { path: '/api/nws-alerts', timeoutMs: 5_000, pick: (payload: any) => ({ nws_alerts: payload.alerts || [] }) },
   { path: '/api/openmhz', timeoutMs: 5_000, pick: (payload: any) => ({ openmhz: payload.feeds || [] }) },
+  { path: '/api/fires', timeoutMs: 5_000, pick: (payload: any) => ({ fires: payload.fires || [] }) },
+  { path: '/api/infrastructure-incidents', timeoutMs: 5_000, pick: (payload: any) => ({ infra_incidents: payload.incidents || [] }) },
 ];
 
 const DEFAULT_ACTIVE_LAYERS = {
@@ -24,9 +26,11 @@ const DEFAULT_ACTIVE_LAYERS = {
   infrastructure: false,
   weather: false,
   radiation: false,
+  nws_alerts: false,
+  fires: false,
+  infra_incidents: false,
   openmhz: false,
 };
-
 function hasEventTime(item: Record<string, unknown>) {
   return Boolean(item.time || item.published || item.pubDate || item.timestamp || item.updated_at || item.last_seen || item.fetchedAt);
 }

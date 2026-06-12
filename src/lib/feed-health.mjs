@@ -12,6 +12,8 @@ export const FEED_DEFINITIONS = [
   { key: 'weather', label: 'Weather', dataKeys: ['weather_events'], layerKey: 'weather', staleAfterMs: 30 * 60_000 },
   { key: 'radiation', label: 'Radiation', dataKeys: ['radiation'], layerKey: 'radiation', staleAfterMs: 5 * 60_000 },
   { key: 'nws_alerts', label: 'NWS / SPC Alerts', dataKeys: ['nws_alerts'], layerKey: 'nws_alerts', staleAfterMs: 30 * 60_000 },
+  { key: 'fires', label: 'NASA FIRMS Fires', dataKeys: ['fires'], layerKey: 'fires', staleAfterMs: 60 * 60_000 },
+  { key: 'infra_incidents', label: 'Infrastructure Incidents', dataKeys: ['infra_incidents'], layerKey: 'infra_incidents', staleAfterMs: 60 * 60_000 },
   { key: 'openmhz', label: 'OpenMHz / P25', dataKeys: ['openmhz'], layerKey: 'openmhz', staleAfterMs: 6 * 60 * 60_000 },
 ];
 
@@ -64,6 +66,7 @@ function feedKeyFromProbePath(path) {
   const segment = String(path || '').split('/').filter(Boolean).pop() || '';
   if (segment === 'live-news') return 'live_news';
   if (segment === 'nws-alerts') return 'nws_alerts';
+  if (segment === 'infrastructure-incidents') return 'infra_incidents';
   if (segment === 'openmhz') return 'openmhz';
   return segment.replace(/-/g, '_');
 }
