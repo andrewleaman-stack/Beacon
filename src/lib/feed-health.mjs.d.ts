@@ -18,6 +18,7 @@ export function buildFeedHealthSnapshot(input?: {
   data?: Record<string, unknown>;
   activeLayers?: Record<string, boolean>;
   backendStatus?: 'connecting' | 'connected' | 'error' | string;
+  probeResults?: Array<{ path: string; ok: boolean; error?: string | null }>;
   now?: number;
 }): {
   platform: 'BEACON';
@@ -43,5 +44,14 @@ export function buildFeedHealthSnapshot(input?: {
     ageSeconds: number | null;
     staleAfterSeconds: number;
     dataKeys: string[];
+  }>;
+  events: Array<{
+    id: string;
+    type: 'probe_failed' | 'feed_offline' | 'feed_stale' | 'feed_refreshed';
+    severity: 'error' | 'warning' | 'info';
+    feedKey: string;
+    label: string;
+    message: string;
+    timestamp: string;
   }>;
 };

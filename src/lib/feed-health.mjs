@@ -1,4 +1,6 @@
 const DEFAULT_NOW = () => Date.now();
+/** @type {Array<{ path: string, ok: boolean, error?: string | null }>} */
+const DEFAULT_PROBE_RESULTS = [];
 
 export const FEED_DEFINITIONS = [
   { key: 'news', label: 'OSINT News', dataKeys: ['news'], layerKey: 'news_intel', staleAfterMs: 30 * 60_000 },
@@ -47,13 +49,86 @@ function latestFromArrays(arrays) {
   return latest;
 }
 
+function formatAge(ageSeconds) {
+  if (ageSeconds == null) return 'unknown age';
+  if (ageSeconds < 60) return `${ageSeconds}s ago`;
+  const minutes = Math.round(ageSeconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  return `${hours}h ago`;
+}
+
+function feedKeyFromProbePath(path) {
+  const segment = String(path || '').split('/').filter(Boolean).pop() || '';
+  if (segment === 'live-news') return 'live_news';
+  return segment.replace(/-/g, '_');
+}
+
+function buildOperationalEvents({ feeds, probeResults = DEFAULT_PROBE_RESULTS, now }) {
+  const byKey = Object.fromEntries(feeds.map((feed) => [feed.key, feed]));
+  const events = [];
+
+  for (const probe of probeResults) {
+    if (probe?.ok !== false) continue;
+    const feedKey = feedKeyFromProbePath(probe.path);
+    const feed = byKey[feedKey];
+    events.push({
+      id: `${now}-probe-${feedKey}`,
+      type: 'probe_failed',
+      severity: 'error',
+      feedKey,
+      label: feed?.label || feedKey,
+      message: `${feed?.label || feedKey} probe failed: ${probe.error || 'unknown error'}`,
+      timestamp: new Date(now).toISOString(),
+    });
+  }
+
+  for (const feed of feeds) {
+    if (!feed.active) continue;
+    if (feed.status === 'offline') {
+      events.push({
+        id: `${now}-offline-${feed.key}`,
+        type: 'feed_offline',
+        severity: 'error',
+        feedKey: feed.key,
+        label: feed.label,
+        message: `${feed.label} is offline: no current records available`,
+        timestamp: new Date(now).toISOString(),
+      });
+    } else if (feed.status === 'stale') {
+      events.push({
+        id: `${now}-stale-${feed.key}`,
+        type: 'feed_stale',
+        severity: 'warning',
+        feedKey: feed.key,
+        label: feed.label,
+        message: `${feed.label} is stale: last event ${formatAge(feed.ageSeconds)}`,
+        timestamp: new Date(now).toISOString(),
+      });
+    } else if (feed.status === 'healthy') {
+      events.push({
+        id: `${now}-refreshed-${feed.key}`,
+        type: 'feed_refreshed',
+        severity: 'info',
+        feedKey: feed.key,
+        label: feed.label,
+        message: `${feed.label} refreshed: ${feed.count} records, last event ${formatAge(feed.ageSeconds)}`,
+        timestamp: new Date(now).toISOString(),
+      });
+    }
+  }
+
+  const severityRank = { error: 0, warning: 1, info: 2 };
+  return events.sort((a, b) => (severityRank[a.severity] ?? 9) - (severityRank[b.severity] ?? 9) || a.feedKey.localeCompare(b.feedKey));
+}
+
 export function classifyFeedStatus({ count, lastEventAt, required, staleAfterMs, now = DEFAULT_NOW() }) {
   if (count <= 0) return required ? 'offline' : 'idle';
   if (lastEventAt == null) return required ? 'stale' : 'idle';
   return now - lastEventAt > staleAfterMs ? 'stale' : 'healthy';
 }
 
-export function buildFeedHealthSnapshot({ data = {}, activeLayers = {}, backendStatus = 'connecting', now = DEFAULT_NOW() } = {}) {
+export function buildFeedHealthSnapshot({ data = {}, activeLayers = {}, backendStatus = 'connecting', probeResults = DEFAULT_PROBE_RESULTS, now = DEFAULT_NOW() } = {}) {
   const feeds = FEED_DEFINITIONS.map((definition) => {
     const arrays = definition.dataKeys.map((key) => asArray(data[key]));
     const count = arrays.reduce((sum, items) => sum + items.length, 0);
@@ -101,5 +176,6 @@ export function buildFeedHealthSnapshot({ data = {}, activeLayers = {}, backendS
     checkedAt: new Date(now).toISOString(),
     summary,
     feeds,
+    events: buildOperationalEvents({ feeds, probeResults, now }),
   };
 }

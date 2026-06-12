@@ -36,6 +36,15 @@ interface FeedHealthSnapshot {
     lastEventAt: string | null;
     ageSeconds: number | null;
   }>;
+  events: Array<{
+    id: string;
+    type: 'probe_failed' | 'feed_offline' | 'feed_stale' | 'feed_refreshed';
+    severity: 'error' | 'warning' | 'info';
+    feedKey: string;
+    label: string;
+    message: string;
+    timestamp: string;
+  }>;
 }
 
 function asArray(value: unknown): unknown[] {
@@ -82,6 +91,12 @@ function feedDot(status?: string): string {
   if (status === 'stale') return 'bg-[#FF9500] shadow-[0_0_8px_#FF9500]';
   if (status === 'offline') return 'bg-[#FF3D3D] shadow-[0_0_8px_#FF3D3D]';
   return 'bg-white/20';
+}
+
+function eventTone(severity: string): string {
+  if (severity === 'error') return 'border-[#FF3D3D]/30 bg-[#FF3D3D]/10 text-[#FFB3B3]';
+  if (severity === 'warning') return 'border-[#FF9500]/30 bg-[#FF9500]/10 text-[#FFD6A0]';
+  return 'border-[var(--cyan-primary)]/20 bg-[var(--cyan-primary)]/5 text-white/70';
 }
 
 export default function LowerDrawer({ data, activeLayers, backendStatus, mapView, open, onToggle }: LowerDrawerProps) {
@@ -175,7 +190,7 @@ export default function LowerDrawer({ data, activeLayers, backendStatus, mapView
   const tabs: { id: DrawerTab; label: string; icon: typeof Activity; badge?: string }[] = [
     { id: 'feed', label: 'FEED CONSOLE', icon: Radio, badge: shortNumber(totalRecords) },
     { id: 'health', label: 'HEALTH', icon: Wifi, badge: operationalStatus.toUpperCase() },
-    { id: 'raw', label: 'RAW EVENTS', icon: Database, badge: String(model.rawEntries.length) },
+    { id: 'raw', label: 'OPS EVENTS', icon: Database, badge: String(feedHealth?.events.length ?? model.rawEntries.length) },
     { id: 'alerts', label: 'WATCHLIST', icon: ShieldAlert, badge: String(model.alerts.length) },
   ];
 
@@ -269,14 +284,28 @@ export default function LowerDrawer({ data, activeLayers, backendStatus, mapView
                   )}
 
                   {tab === 'raw' && (
-                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-1.5 text-[9px] font-mono">
-                      {model.rawEntries.map(entry => (
-                        <div key={entry.key} className="flex items-center justify-between rounded border border-white/10 bg-black/30 px-2.5 py-2">
-                          <span className="truncate text-white/60">{entry.key}</span>
-                          <span className="ml-2 text-[var(--cyan-primary)] tabular-nums">{entry.count || entry.type}</span>
-                        </div>
-                      ))}
-                    </div>
+                    feedHealth?.events.length ? (
+                      <div className="space-y-1.5 text-[9px] font-mono">
+                        {feedHealth.events.map(event => (
+                          <div key={event.id} className={`rounded border px-3 py-2 ${eventTone(event.severity)}`}>
+                            <div className="flex items-center justify-between gap-3 mb-1">
+                              <span className="font-bold tracking-wider">{event.severity.toUpperCase()} · {event.label.toUpperCase()}</span>
+                              <span className="text-white/35 tabular-nums">{new Date(event.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                            </div>
+                            <div className="text-white/65">{event.message}</div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-2 lg:grid-cols-4 gap-1.5 text-[9px] font-mono">
+                        {model.rawEntries.map(entry => (
+                          <div key={entry.key} className="flex items-center justify-between rounded border border-white/10 bg-black/30 px-2.5 py-2">
+                            <span className="truncate text-white/60">{entry.key}</span>
+                            <span className="ml-2 text-[var(--cyan-primary)] tabular-nums">{entry.count || entry.type}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )
                   )}
 
                   {tab === 'alerts' && (

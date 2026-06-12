@@ -47,15 +47,17 @@ export async function GET(request: NextRequest) {
   const origin = request.nextUrl.origin;
   const results = await Promise.all(FEED_PROBES.map((probe) => probeFeed(origin, probe)));
   const data = results.reduce<Record<string, unknown>>((acc, result) => ({ ...acc, ...result.data }), {});
+  const probeResults = results.map(({ path, ok, error }) => ({ path, ok, error: error || null }));
   const snapshot = buildFeedHealthSnapshot({
     data,
     activeLayers: DEFAULT_ACTIVE_LAYERS,
     backendStatus: results.some((result) => result.ok) ? 'connected' : 'error',
+    probeResults,
   });
 
   return NextResponse.json({
     ...snapshot,
-    probes: results.map(({ path, ok, error }) => ({ path, ok, error: error || null })),
+    probes: probeResults,
   }, {
     headers: {
       'Cache-Control': 'no-store',
