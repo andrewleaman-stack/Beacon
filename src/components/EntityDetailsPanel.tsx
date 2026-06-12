@@ -40,6 +40,11 @@ function formatValue(key: string, value: unknown): string {
   return String(value);
 }
 
+function EntityTypeIcon({ type }: { type: string }) {
+  const C = getIconForType(type);
+  return <C className="w-5 h-5 text-[var(--cyan-primary)]" />;
+}
+
 export default function EntityDetailsPanel({ entity, beaconData }: EntityDetailsPanelProps) {
   const sections = useMemo(() => {
     const props = entity.properties || {};
@@ -61,7 +66,7 @@ export default function EntityDetailsPanel({ entity, beaconData }: EntityDetails
     <div className="glass-panel p-4 h-full overflow-y-auto styled-scrollbar">
       <div className="flex items-start gap-3 mb-4">
         <div className="w-10 h-10 rounded-lg bg-[var(--cyan-primary)]/20 flex items-center justify-center flex-shrink-0">
-          {(() => { const C = getIconForType(entity.type); return <C className="w-5 h-5 text-[var(--cyan-primary)]" />; })()}
+          <EntityTypeIcon type={entity.type} />
         </div>
         <div className="min-w-0 flex-1">
           <h3 className="text-sm font-mono font-bold text-white tracking-wider">{entity.label}</h3>
