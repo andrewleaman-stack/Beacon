@@ -50,6 +50,17 @@ USGS\t04167000\tOHIO RIVER AT CINCINNATI, OH\tST\t39.1031\t-84.5120\t1\tNAD83\t2
   assert.equal(ohStations[0].state, 'OH');
 });
 
+test('parseRdbStations uses requested state when RDB omits state_cd', () => {
+  const rdb = `agency_cd\tsite_no\tstation_nm\tsite_tp_cd\tdec_lat_va\tdec_long_va\tcoord_acy_cd\tdec_coord_datum_cd\talt_va\talt_acy_va\talt_datum_cd\thuc_cd\tcounty_cd
+USGS\t04166000\tHURON RIVER AT MILAN, MI\tST\t42.1333\t-83.6833\t1\tNAD83\t200\t10\tNAVD88\t040800000101\t161
+`;
+
+  const stations = parseRdbStations(rdb, 'MI');
+
+  assert.equal(stations.length, 1);
+  assert.equal(stations[0].state, 'MI');
+});
+
 test('normalizeUsgsRealtime maps WaterServices time series to BEACON readings', () => {
   const feature = {
     properties: {
