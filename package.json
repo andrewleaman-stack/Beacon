@@ -14,6 +14,8 @@
     "test:view-hotkeys": "node --test scripts/view-hotkeys.test.mjs",
     "test:dashboard-settings": "node --test scripts/dashboard-settings.test.mjs",
     "test:infra-advisory-feeds": "node --test scripts/infra-advisory-feeds.test.mjs",
+    "test:usgs-gauges": "node --test scripts/usgs-gauges.test.mjs",
+    "test:fema-disasters": "node --test scripts/fema-disasters.test.mjs",
     "typecheck": "tsc --noEmit",
     "smoke": "node scripts/smoke.mjs",
     "db:push": "prisma db push",
