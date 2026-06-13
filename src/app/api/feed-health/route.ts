@@ -25,6 +25,9 @@ const FEED_PROBES = [
   { path: '/api/volcano-alerts', timeoutMs: 8_000, pick: (payload: any) => ({ volcano_alerts: payload.alerts || [] }) },
   { path: '/api/epa-echo', timeoutMs: 12_000, pick: (payload: any) => ({ epa_echo: payload.facilities || [] }) },
   { path: '/api/power-outages', timeoutMs: 8_000, pick: (payload: any) => ({ power_outages: payload.outages || [] }) },
+  { path: '/api/phmsa-incidents', timeoutMs: 8_000, pick: (payload: any) => ({ phmsa_incidents: payload.incidents || [] }) },
+  { path: '/api/fra-rail-incidents', timeoutMs: 8_000, pick: (payload: any) => ({ fra_rail_incidents: payload.incidents || [] }) },
+  { path: '/api/submarine-cable-faults', timeoutMs: 8_000, pick: (payload: any) => ({ submarine_cable_faults: payload.faults || [] }) },
   { path: '/api/fema-disasters', timeoutMs: 8_000, pick: (payload: any) => ({ fema_disasters: payload.disasters || [] }) },
 ];
 
@@ -50,6 +53,9 @@ const DEFAULT_ACTIVE_LAYERS = {
   volcano_alerts: false,
   epa_echo: false,
   power_outages: false,
+  phmsa_incidents: false,
+  fra_rail_incidents: false,
+  submarine_cable_faults: false,
   fema_disasters: false,
   openmhz: false,
 };

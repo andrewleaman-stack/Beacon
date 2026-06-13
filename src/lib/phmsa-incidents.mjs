@@ -1,107 +1,80 @@
-const PHMSA_CSV_URL = 'https://www.phmsa.dot.gov/data-and-statistics/pipeline/pipeline-incident-20-year-trends';
+const PHMSA_SOCRATA_URL = 'https://data.transportation.gov/resource/qdme-9bbm.json';
 
 function clean(value) {
   return String(value ?? '').trim();
 }
 
 function number(value, fallback = null) {
-  const parsed = Number(value);
+  const parsed = Number(String(value ?? '').replace(/[$,]/g, ''));
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-function parseCsvLine(line) {
-  const cells = [];
-  let current = '';
-  let quoted = false;
-  for (let i = 0; i < line.length; i++) {
-    const char = line[i];
-    const next = line[i + 1];
-    if (char === '"' && quoted && next === '"') {
-      current += '"';
-      i++;
-      continue;
-    }
-    if (char === '"') {
-      quoted = !quoted;
-      continue;
-    }
-    if (char === ',' && !quoted) {
-      cells.push(current);
-      current = '';
-      continue;
-    }
-    current += char;
+function first(row, names) {
+  for (const name of names) {
+    if (row[name] != null && row[name] !== '') return row[name];
   }
-  cells.push(current);
-  return cells.map(clean);
+  return '';
 }
 
-function parsePhmsaCsv(csvText) {
-  const lines = String(csvText || '').split(/\r?\n/).filter(l => l.trim());
-  if (lines.length < 2) return [];
-  const headers = parseCsvLine(lines[0]);
-  const incidents = [];
-  for (let i = 1; i < lines.length; i++) {
-    const cells = parseCsvLine(lines[i]);
-    if (cells.length < headers.length) continue;
-    const row = Object.fromEntries(headers.map((h, idx) => [h, cells[idx] ?? '']));
-    incidents.push(row);
-  }
-  return incidents;
+function parseDate(row) {
+  const direct = clean(first(row, ['incident_date', 'local_datetime', 'date', 'report_received_date', 'accident_date']));
+  if (direct) return direct;
+  const year = number(first(row, ['year', 'incident_year', 'iyear']));
+  const month = number(first(row, ['month', 'incident_month', 'imonth']), 1);
+  const day = number(first(row, ['day', 'incident_day', 'iday']), 1);
+  return year ? `${year}-${String(month || 1).padStart(2, '0')}-${String(day || 1).padStart(2, '0')}` : '';
 }
 
-function normalizePhmsaIncident(row) {
-  const lat = number(row.Latitude || row.latitude);
-  const lng = number(row.Longitude || row.longitude);
-  if (lat == null || lng == null) return null;
+function severityFrom(row) {
+  const fatalities = number(first(row, ['fatalities', 'fatal', 'num_fatalities']), 0);
+  const injuries = number(first(row, ['injuries', 'injured', 'num_injuries']), 0);
+  const damage = number(first(row, ['total_property_damage', 'property_damage', 'total_cost', 'estimated_property_damage']), 0);
+  const significant = clean(first(row, ['significant', 'significant_ind', 'significant_flag'])).toLowerCase();
+  if (fatalities > 0) return 'critical';
+  if (injuries > 0 || damage >= 1_000_000) return 'high';
+  if (significant === 'yes' || significant === 'y' || significant === 'true' || damage >= 50_000) return 'elevated';
+  return 'low';
+}
 
-  const year = number(row.Year || row.year);
-  const month = number(row.Month || row.month);
-  const day = number(row.Day || row.day);
-  const dateStr = year ? `${year}-${String(month || 1).padStart(2, '0')}-${String(day || 1).padStart(2, '0')}` : new Date().toISOString().split('T')[0];
-
+export function normalizePhmsaIncident(row) {
+  const lat = number(first(row, ['latitude', 'lat', 'incident_latitude']));
+  const lng = number(first(row, ['longitude', 'lon', 'lng', 'incident_longitude']));
+  const id = clean(first(row, ['incident_number', 'incident_id', 'report_number', 'id'])) || `${clean(first(row, ['operator_name', 'operator']))}-${parseDate(row)}`;
   return {
-    id: `phmsa-${row.IncidentNumber || row.incident_number || row.INCIDENT_NUMBER || `${year}-${i}`}`,
-    incidentNumber: clean(row.IncidentNumber || row.incident_number),
-    date: dateStr,
-    year,
-    month,
-    day,
-    systemType: clean(row.SystemType || row.system_type || row.SYSTEM_TYPE),
-    commodity: clean(row.Commodity || row.commodity || row.COMMODITY),
-    incidentType: clean(row.IncidentType || row.incident_type || row.INCIDENT_TYPE),
-    cause: clean(row.Cause || row.cause || row.CAUSE),
-    fatalities: number(row.Fatalities || row.fatalities, 0),
-    injuries: number(row.Injuries || row.injuries, 0),
-    propertyDamage: number(row.PropertyDamage || row.property_damage || row.PROPERTY_DAMAGE, 0),
-    barrelsReleased: number(row.BarrelsReleased || row.barrels_released || row.BARRELS_RELEASED, 0),
-    mcfReleased: number(row.McfReleased || row.mcf_released || row.MCF_RELEASED, 0),
-    operator: clean(row.OperatorName || row.operator_name || row.OPERATOR_NAME),
-    state: clean(row.State || row.state || row.STATE),
-    county: clean(row.County || row.county || row.COUNTY),
-    city: clean(row.City || row.city || row.CITY),
+    id: `phmsa-${id}`,
+    type: 'pipeline',
+    title: clean(first(row, ['title'])) || `${clean(first(row, ['commodity_released', 'commodity', 'system_type'])) || 'Pipeline'} incident${clean(first(row, ['state'])) ? ` — ${clean(first(row, ['state']))}` : ''}`,
+    description: clean(first(row, ['narrative', 'description', 'cause_details', 'cause'])) || 'PHMSA pipeline incident record.',
+    incidentNumber: id,
+    date: parseDate(row),
+    state: clean(first(row, ['state', 'state_name'])),
+    county: clean(first(row, ['county', 'county_name'])),
+    city: clean(first(row, ['city', 'location_city'])),
+    operator: clean(first(row, ['operator_name', 'operator'])),
+    systemType: clean(first(row, ['system_type', 'pipeline_system_type'])),
+    commodity: clean(first(row, ['commodity_released', 'commodity'])),
+    cause: clean(first(row, ['cause', 'cause_category', 'cause_subcategory'])),
+    fatalities: number(first(row, ['fatalities', 'fatal', 'num_fatalities']), 0),
+    injuries: number(first(row, ['injuries', 'injured', 'num_injuries']), 0),
+    propertyDamage: number(first(row, ['total_property_damage', 'property_damage', 'total_cost', 'estimated_property_damage']), 0),
     lat,
     lng,
-    source: 'PHMSA Pipeline Incidents',
-    sourceUrl: 'https://www.phmsa.dot.gov/data-and-statistics/pipeline',
+    mappable: lat != null && lng != null,
+    severity: severityFrom(row),
+    source: 'PHMSA Pipeline Incident Flagged Files',
+    sourceUrl: 'https://data.transportation.gov/Pipelines-and-Hazmat/Pipeline-Incident-Flagged-Files/qdme-9bbm',
     fetchedAt: new Date().toISOString(),
-    severity: row.Fatalities > 0 ? 'critical' : row.Injuries > 0 ? 'high' : row.PropertyDamage > 100000 ? 'high' : 'elevated',
   };
 }
 
-export function parsePhmsaIncidentsCsv(csvText) {
-  return parsePhmsaCsv(csvText).map(normalizePhmsaIncident).filter(Boolean);
-}
-
-export async function fetchPhmsaIncidents({ year, fetchImpl = fetch } = {}) {
-  const url = year
-    ? `https://www.phmsa.dot.gov/sites/phmsa.dot.gov/files/${year}_pipeline_incidents.csv`
-    : 'https://www.phmsa.dot.gov/sites/phmsa.dot.gov/files/pipeline_incidents_2020_present.csv';
-
-  const response = await fetchImpl(url, {
+export async function fetchPhmsaIncidents({ state = 'MI', limit = 50, fetchImpl = fetch } = {}) {
+  const params = new URLSearchParams({ '$limit': String(Math.min(limit, 500)), '$order': ':id DESC' });
+  if (state) params.set('state', state);
+  const response = await fetchImpl(`${PHMSA_SOCRATA_URL}?${params.toString()}`, {
     cache: 'no-store',
-    headers: { 'User-Agent': 'BEACON/1.0 phmsa-incidents' },
+    headers: { 'User-Agent': 'BEACON/1.0 phmsa-incidents', 'Accept': 'application/json' },
   });
-  if (!response.ok) throw new Error(`PHMSA returned HTTP ${response.status}`);
-  return parsePhmsaIncidentsCsv(await response.text());
+  if (!response.ok) throw new Error(`PHMSA Socrata returned HTTP ${response.status}`);
+  const rows = await response.json();
+  return (Array.isArray(rows) ? rows : []).map(normalizePhmsaIncident).filter(Boolean);
 }
