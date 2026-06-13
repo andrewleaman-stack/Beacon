@@ -43,12 +43,12 @@ export default function FeedViewHotkeys({ activeLayers, setActiveLayers, compact
 
   if (compact) {
     return (
-      <div className="pointer-events-auto rounded-lg border border-white/10 bg-black/35 px-1.5 py-1.5 backdrop-blur-sm">
-        <div className="mb-1 flex items-center justify-center gap-1 text-[6px] font-mono font-bold tracking-[0.18em] text-[var(--gold-primary)]/80">
-          <Keyboard className="h-2.5 w-2.5" />
+      <div className="pointer-events-auto rounded-lg border border-white/10 bg-black/45 px-2 py-2 backdrop-blur-sm shadow-[0_0_18px_rgba(0,0,0,0.35)]">
+        <div className="mb-1.5 flex items-center justify-center gap-1 text-[8px] font-mono font-bold tracking-[0.18em] text-[var(--gold-primary)]/85">
+          <Keyboard className="h-3 w-3" />
           VIEWS
         </div>
-        <div className="grid grid-cols-3 gap-1" aria-label="Feed view hotkeys">
+        <div className="grid grid-cols-3 gap-1.5" aria-label="Feed view hotkeys">
           {HOTKEY_VIEW_PRESETS.map((preset: any) => {
             const isActive = activePresetId === preset.id;
             return (
@@ -58,7 +58,7 @@ export default function FeedViewHotkeys({ activeLayers, setActiveLayers, compact
                 onClick={() => applyPreset(preset.id)}
                 title={`[${preset.shortcut}] ${preset.label}: ${preset.description}`}
                 aria-pressed={isActive}
-                className={`h-5 rounded border text-[7px] font-mono font-bold transition-all ${
+                className={`h-6 rounded border text-[8px] font-mono font-bold transition-all ${
                   isActive
                     ? 'border-[var(--gold-primary)]/70 bg-[var(--gold-primary)]/15 text-[var(--gold-primary)] shadow-[0_0_10px_rgba(212,175,55,0.18)]'
                     : 'border-white/10 bg-white/[0.03] text-white/45 hover:border-[var(--cyan-primary)]/40 hover:text-[var(--cyan-primary)]'

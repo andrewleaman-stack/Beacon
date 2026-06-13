@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Layers, BarChart3, Newspaper, Search, X, Globe, MapPinned, Radar, Satellite, Moon, ExternalLink, AlertTriangle, Activity, Database, Wifi, Play, Network, PanelLeft } from 'lucide-react';
+import { Layers, BarChart3, Newspaper, Search, X, Globe, MapPinned, Radar, Satellite, Moon, ExternalLink, AlertTriangle, Activity, Database, Wifi, Play, Network, PanelLeft, Home, Settings2 } from 'lucide-react';
 import IntelFeed from '@/components/IntelFeed';
 import MarketsPanel from '@/components/MarketsPanel';
 import ScmPanel from '@/components/ScmPanel';
@@ -17,6 +17,13 @@ import GlobalStatusBar from '@/components/GlobalStatusBar';
 import LiveAlerts from '@/components/LiveAlerts';
 import LowerDrawer from '@/components/LowerDrawer';
 import RightDrawer from '@/components/RightDrawer';
+import DashboardViewControls from '@/components/DashboardViewControls';
+import {
+  DEFAULT_DASHBOARD_VIEW_SETTINGS,
+  DEFAULT_HOME_LOCATION,
+  normalizeDashboardViewSettings,
+  normalizeHomeLocation,
+} from '@/lib/dashboard-settings.mjs';
 
 const BeaconMap = dynamic(() => import('@/components/BeaconMap'), { ssr: false });
 const LayerPanel = dynamic(() => import('@/components/LayerPanel'));
@@ -91,8 +98,8 @@ export default function Dashboard() {
   const data = dataRef.current;
 
   const [backendStatus, setBackendStatus] = useState<'connecting' | 'connected' | 'error'>('connecting');
-  const [mapView, setMapView] = useState({ zoom: 2.5, latitude: 20 });
-  const [flyToLocation, setFlyToLocation] = useState<{ lat: number; lng: number; ts: number } | null>(null);
+  const [mapView, setMapView] = useState({ zoom: 2.5, latitude: 20, longitude: 0 });
+  const [flyToLocation, setFlyToLocation] = useState<{ lat: number; lng: number; zoom?: number; ts: number } | null>(null);
   const [globalStats, setGlobalStats] = useState<any>(null);
   const mouseCoordsRef = useRef<{ lat: number; lng: number } | null>(null);
   const coordsDisplayRef = useRef<HTMLDivElement>(null);
@@ -117,6 +124,9 @@ export default function Dashboard() {
   const [scanTargets, setScanTargets] = useState<any[]>([]);
   const [entityGraphTarget, setEntityGraphTarget] = useState<{ type: string; id: string; label?: string; properties?: Record<string, any> } | null>(null);
   const [demoMode, setDemoMode] = useState(false);
+  const [showViewControls, setShowViewControls] = useState(false);
+  const [viewSettings, setViewSettings] = useState(() => normalizeDashboardViewSettings(DEFAULT_DASHBOARD_VIEW_SETTINGS));
+  const [homeLocation, setHomeLocation] = useState(() => normalizeHomeLocation(DEFAULT_HOME_LOCATION));
 
   // Right drawer state
   const [showRightDrawer, setShowRightDrawer] = useState(false);
@@ -167,6 +177,34 @@ export default function Dashboard() {
     return () => clearTimeout(splashTimer);
   }, []);
 
+  // Persist operator readability controls and home location locally.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const savedView = window.localStorage.getItem('beacon.dashboard.viewSettings');
+      const savedHome = window.localStorage.getItem('beacon.dashboard.homeLocation');
+      if (savedView) setViewSettings(normalizeDashboardViewSettings(JSON.parse(savedView)));
+      if (savedHome) setHomeLocation(normalizeHomeLocation(JSON.parse(savedHome)));
+    } catch (error) {
+      console.warn('[BEACON] Unable to load dashboard settings:', error);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem('beacon.dashboard.viewSettings', JSON.stringify(viewSettings));
+  }, [viewSettings]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem('beacon.dashboard.homeLocation', JSON.stringify(homeLocation));
+  }, [homeLocation]);
+
+  const goHome = useCallback(() => {
+    setFlyToLocation({ lat: homeLocation.lat, lng: homeLocation.lng, zoom: homeLocation.zoom, ts: Date.now() });
+    setMapView({ latitude: homeLocation.lat, longitude: homeLocation.lng, zoom: homeLocation.zoom });
+  }, [homeLocation]);
+
   // URL state: parse on mount
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -175,8 +213,8 @@ export default function Dashboard() {
     const lon = parseFloat(p.get('lon') || '');
     const zoom = parseFloat(p.get('zoom') || '');
     if (!isNaN(lat) && !isNaN(lon)) {
-      setFlyToLocation({ lat, lng: lon, ts: Date.now() });
-      if (!isNaN(zoom)) setMapView(v => ({ ...v, zoom }));
+      setFlyToLocation({ lat, lng: lon, zoom: !isNaN(zoom) ? zoom : undefined, ts: Date.now() });
+      setMapView(v => ({ ...v, latitude: lat, longitude: lon, zoom: !isNaN(zoom) ? zoom : v.zoom }));
     }
     const layers = p.get('layers');
     if (layers) {
@@ -197,7 +235,7 @@ export default function Dashboard() {
     urlTimer.current = setTimeout(() => {
       const p = new URLSearchParams();
       p.set('lat', (mapView.latitude ?? 20).toFixed(4));
-      p.set('lon', '0');
+      p.set('lon', (mapView.longitude ?? 0).toFixed(4));
       p.set('zoom', mapView.zoom.toFixed(2));
       const active = Object.entries(activeLayers).filter(([,v]) => v).map(([k]) => k).join(',');
       p.set('layers', active);
@@ -229,14 +267,15 @@ export default function Dashboard() {
       if (e.key === 'c') setShowScmPanel(p => !p);
       if (e.key === 'i') setShowIntel(p => !p);
       if (e.key === 'd') setShowLowerDrawer(p => !p);
-      if (e.key === 'r') setFlyToLocation({ lat: 20, lng: 0, ts: Date.now() });
+      if (e.key === 'r') goHome();
+      if (e.key === 'v') setShowViewControls(p => !p);
       if (e.key === 'g') setMapProjection(p => p === 'globe' ? 'mercator' : 'globe');
     };
     const fsHandler = () => setIsFullscreen(!!document.fullscreenElement);
     window.addEventListener('keydown', handler);
     document.addEventListener('fullscreenchange', fsHandler);
     return () => { window.removeEventListener('keydown', handler); document.removeEventListener('fullscreenchange', fsHandler); };
-  }, []);
+  }, [goHome]);
 
   // Mouse coords + reverse geocode (Zero-Render)
   const handleMouseCoords = useCallback((coords: { lat: number; lng: number }) => {
@@ -593,7 +632,11 @@ export default function Dashboard() {
 
 
   return (
-    <main className="fixed inset-0 w-full h-full bg-[var(--bg-void)] overflow-hidden">
+    <main
+      className="fixed inset-0 w-full h-full bg-[var(--bg-void)] overflow-hidden dashboard-shell"
+      data-density={viewSettings.density}
+      style={{ '--dashboard-font-scale': viewSettings.fontScale } as React.CSSProperties}
+    >
 
       {/* ── SPLASH ── */}
       <AnimatePresence>
@@ -804,6 +847,7 @@ export default function Dashboard() {
           sweepData={sweepData}
           scanTargets={scanTargets}
           demoMode={demoMode}
+          visualScale={viewSettings.iconScale}
         />
       </ErrorBoundary>
 
@@ -844,6 +888,49 @@ export default function Dashboard() {
             {mapStyle === 'dark' ? 'SATELLITE' : 'NIGHT MODE'}
           </span>
         </button>
+
+        <button
+          onClick={goHome}
+          className="glass-panel p-3.5 pointer-events-auto hover:border-[var(--cyan-primary)]/40 transition-colors group relative"
+          title={`Go to home: ${homeLocation.label}`}
+        >
+          <Home className="w-5 h-5 text-[var(--cyan-primary)] group-hover:scale-110 transition-transform" />
+          <span className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 text-[9px] font-mono text-[var(--text-muted)] whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity glass-panel px-2 py-1 z-[300]">
+            HOME · R
+          </span>
+        </button>
+
+        <button
+          onClick={() => setShowViewControls(p => !p)}
+          className={`glass-panel p-3.5 pointer-events-auto hover:border-[var(--gold-primary)]/40 transition-colors group relative ${showViewControls ? 'border-[var(--gold-primary)]/50 bg-[var(--gold-primary)]/10' : ''}`}
+          title="Open view controls"
+          aria-expanded={showViewControls}
+        >
+          <Settings2 className="w-5 h-5 text-[var(--gold-primary)] group-hover:scale-110 transition-transform" />
+          <span className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 text-[9px] font-mono text-[var(--text-muted)] whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity glass-panel px-2 py-1 z-[300]">
+            VIEW · V
+          </span>
+        </button>
+
+        <AnimatePresence>
+          {showViewControls && (
+            <motion.div
+              initial={{ opacity: 0, y: 12, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 8, scale: 0.98 }}
+              className="absolute left-0 bottom-[58px] z-[310]"
+            >
+              <DashboardViewControls
+                viewSettings={viewSettings as any}
+                setViewSettings={setViewSettings as any}
+                homeLocation={homeLocation as any}
+                setHomeLocation={setHomeLocation as any}
+                currentView={mapView}
+                onGoHome={goHome}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
 
       </motion.div>
 
@@ -893,7 +980,7 @@ export default function Dashboard() {
 
 
       {/* ── NEW SIDEBAR (Root Level) ── */}
-      {showLayers && !isMobile && <LayerPanel data={data} activeLayers={activeLayers} setActiveLayers={setActiveLayers} />}
+      {showLayers && !isMobile && <LayerPanel data={data} activeLayers={activeLayers} setActiveLayers={setActiveLayers} density={viewSettings.density} />}
 
       {/* ── LOWER OPS DRAWER (desktop) ── */}
       {!isMobile && (

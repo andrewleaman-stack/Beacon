@@ -12,6 +12,8 @@
     "test:credentialed-feeds": "node --test scripts/credentialed-feeds.test.mjs",
     "test:hazard-feeds": "node --test scripts/hazard-feeds.test.mjs",
     "test:view-hotkeys": "node --test scripts/view-hotkeys.test.mjs",
+    "test:dashboard-settings": "node --test scripts/dashboard-settings.test.mjs",
+    "test:infra-advisory-feeds": "node --test scripts/infra-advisory-feeds.test.mjs",
     "typecheck": "tsc --noEmit",
     "smoke": "node scripts/smoke.mjs",
     "db:push": "prisma db push",
