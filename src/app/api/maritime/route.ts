@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import WebSocket from 'ws';
+import { buildAisSubscription, normalizeAisStreamMessage, parseAisBoundingBoxes } from '@/lib/aisstream.mjs';
 
 /**
  * BEACON — Maritime Intelligence
@@ -97,7 +98,7 @@ const shipsCache = globalForAis.shipsCache;
 
 function connectAisStream() {
   if (globalForAis.isAisConnecting) return;
-  const apiKey = process.env.AIS_API_KEY;
+  const apiKey = process.env.AISSTREAM_API_KEY || process.env.AIS_API_KEY;
   if (!apiKey) return;
 
   globalForAis.isAisConnecting = true;
@@ -112,44 +113,12 @@ function connectAisStream() {
 
   ws.on("open", () => {
     globalForAis.isAisConnecting = false;
-    const subscriptionMessage = {
-      APIKey: apiKey,
-      // Target specific high-value SCM areas to ensure data delivery on free tier
-      BoundingBoxes: [
-        // Tokyo Bay
-        [[34.8, 139.5], [35.7, 140.2]],
-        // Hormuz
-        [[25.0, 54.0], [27.5, 57.5]],
-        // Suez Canal
-        [[27.0, 32.0], [32.0, 33.5]],
-        // Bab el-Mandeb
-        [[12.0, 42.5], [14.0, 44.0]],
-        // Panama Canal
-        [[8.0, -80.5], [10.0, -79.0]],
-        // Malacca / Singapore
-        [[1.0, 103.0], [3.0, 104.5]],
-        // Taiwan Strait
-        [[22.0, 118.0], [26.0, 121.0]],
-        // Rotterdam / English Channel
-        [[50.0, 0.0], [53.0, 5.0]],
-        // US West Coast (LA/LB)
-        [[33.0, -119.0], [34.5, -117.0]],
-        // Global fallback (often heavily sampled by aisstream)
-        [[-90, -180], [90, 180]]
-      ],
-      FilterMessageTypes: ["PositionReport", "ShipStaticData"]
-    };
+    const subscriptionMessage = (buildAisSubscription as any)({
+      apiKey,
+      boundingBoxes: parseAisBoundingBoxes(process.env.AIS_BOUNDING_BOXES),
+    });
     ws.send(JSON.stringify(subscriptionMessage));
   });
-
-  // Map AIS ship types to BEACON categories
-  const getBeaconShipType = (typeCode: number) => {
-    if (!typeCode) return 'cargo';
-    if (typeCode >= 80 && typeCode <= 89) return 'tanker';
-    if (typeCode >= 70 && typeCode <= 79) return 'cargo';
-    if (typeCode === 35) return 'military';
-    return 'cargo';
-  };
 
   ws.on("message", (data) => {
     try {
@@ -157,34 +126,8 @@ function connectAisStream() {
       const mmsi = parsed.MetaData?.MMSI;
       if (!mmsi) return;
 
-      const existing = shipsCache.get(mmsi) || {
-        id: mmsi, mmsi: mmsi, timestamp: Date.now()
-      };
-
-      // Extract Name from MetaData if available (present in most messages)
-      if (parsed.MetaData?.ShipName) {
-        existing.name = parsed.MetaData.ShipName.trim();
-      }
-
-      if (parsed.MessageType === "PositionReport" && parsed.Message?.PositionReport) {
-        const report = parsed.Message.PositionReport;
-        existing.lat = report.Latitude;
-        existing.lng = report.Longitude;
-        existing.speed = report.Sog;
-        existing.heading = report.TrueHeading || report.Cog;
-        existing.timestamp = Date.now();
-      } 
-      else if (parsed.MessageType === "ShipStaticData" && parsed.Message?.ShipStaticData) {
-        const staticData = parsed.Message.ShipStaticData;
-        existing.name = staticData.Name ? staticData.Name.trim() : existing.name;
-        existing.destination = staticData.Destination ? staticData.Destination.trim() : existing.destination;
-        existing.type = getBeaconShipType(staticData.Type);
-      }
-
-      // Only store if we have coordinates
-      if (existing.lat && existing.lng) {
-        shipsCache.set(mmsi, existing);
-      }
+      const normalized = normalizeAisStreamMessage(parsed, shipsCache.get(mmsi) || {});
+      if (normalized) shipsCache.set(mmsi, normalized);
 
       // Limit cache size to prevent memory leak (allow up to 20,000 ships)
       if (shipsCache.size > 20000) {
