@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "test:feed-health": "node --test scripts/feed-health.test.mjs",
+    "test:live-feeds": "node --test scripts/live-feeds.test.mjs",
     "typecheck": "tsc --noEmit",
     "smoke": "node scripts/smoke.mjs",
     "db:push": "prisma db push",
