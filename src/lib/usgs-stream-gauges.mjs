@@ -11,13 +11,12 @@ function number(value, fallback = null) {
 
 function buildUsgsGaugesUrl({ state, limit = 500, parameterCodes = ['00060', '00065'], bbox } = {}) {
   const params = new URLSearchParams({
-    f: 'json',
-    limit: String(limit),
+    format: 'json',
   });
   if (state) params.set('stateCd', state);
   if (parameterCodes.length) params.set('parameterCd', parameterCodes.join(','));
   if (bbox) params.set('bbox', bbox);
-  return `${USGS_WATER_BASE}/collections/monitoring-locations/items?${params.toString()}`;
+  return `https://waterservices.usgs.gov/nwis/iv/?${params.toString()}`;
 }
 
 function buildUsgsRealtimeUrl({ sites, parameterCodes = ['00060', '00065'], limit = 500 } = {}) {
@@ -32,25 +31,33 @@ function buildUsgsRealtimeUrl({ sites, parameterCodes = ['00060', '00065'], limi
 
 function parseUsgsGaugeFeature(feature) {
   const props = feature?.properties || {};
-  const geom = feature?.geometry || {};
-  const coords = geom.coordinates || [];
-  const lng = number(coords[0]);
-  const lat = number(coords[1]);
+  const sourceInfo = props.sourceInfo || {};
+  const site = sourceInfo.siteCode?.[0]?.value || sourceInfo.siteName || '';
+  const lat = number(sourceInfo.geoLocation?.geogLocation?.latitude);
+  const lng = number(sourceInfo.geoLocation?.geogLocation?.longitude);
   if (lat == null || lng == null) return null;
 
+  const siteCode = sourceInfo.siteCode?.[0]?.value || '';
+  const siteName = sourceInfo.siteName || 'USGS Gauge';
+  const siteType = sourceInfo.siteProperty?.find(p => p.name === 'siteTypeCd')?.value || '';
+  const agency = sourceInfo.agencyCode || sourceInfo.agency_code || 'USGS';
+  const stateCode = sourceInfo.siteProperty?.find(p => p.name === 'stateCd')?.value || '';
+  const countyCd = sourceInfo.countyCd || sourceInfo.siteProperty?.find(p => p.name === 'countyCd')?.value || '';
+  const hucCd = sourceInfo.siteProperty?.find(p => p.name === 'hucCd')?.value || '';
+
   return {
-    id: `usgs-gauge-${props.monitoring_location_id || props.id}`,
-    name: clean(props.monitoring_location_name || props.site_name || 'USGS Gauge'),
-    siteId: clean(props.monitoring_location_id || props.site_no || props.id),
+    id: `usgs-gauge-${siteCode}`,
+    name: clean(siteName),
+    siteId: clean(siteCode),
     lat,
     lng,
-    state: clean(props.state_code || props.state_cd),
-    county: clean(props.county_name || props.county_cd),
-    huc: clean(props.hydrologic_unit_code || props.huc_cd),
-    siteType: clean(props.site_type_code || props.site_tp_cd),
-    agency: clean(props.agency_code || props.agency_cd),
+    state: clean(stateCode),
+    county: clean(countyCd),
+    huc: clean(hucCd),
+    siteType: clean(siteType),
+    agency: clean(agency),
     source: 'USGS Water Services',
-    sourceUrl: `https://waterdata.usgs.gov/monitoring-location/${props.monitoring_location_id || props.site_no}`,
+    sourceUrl: `https://waterdata.usgs.gov/monitoring-location/${siteCode}`,
     fetchedAt: new Date().toISOString(),
   };
 }
