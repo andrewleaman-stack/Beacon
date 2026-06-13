@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { fetchUsgsFloodGauges, fetchUsgsGauges } from '@/lib/usgs-stream-gauges.mjs';
+import { fetchUsgsStations, fetchUsgsFloodGauges } from '@/lib/usgs-stream-gauges.mjs';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,13 +17,13 @@ export async function GET(request: Request) {
     let sourceStatus;
 
     if (mode === 'stations') {
-      gauges = await fetchUsgsGauges({ state, limit } as { state?: string; limit: number });
-      sourceStatus = [{ source: 'USGS Water Services (stations)', ok: true, count: gauges.length, error: null }];
+      gauges = await fetchUsgsStations({ state, limit } as { state?: string; limit: number });
+      sourceStatus = [{ source: 'USGS OGC Stations', ok: true, count: gauges.length, error: null }];
     } else {
-      gauges = await fetchUsgsFloodGauges({ state } as { state?: string });
+      gauges = await fetchUsgsFloodGauges({ state, limit } as { state?: string; limit: number });
       sourceStatus = [
-        { source: 'USGS Water Services (gauges)', ok: gauges.length > 0, count: gauges.length, error: gauges.length === 0 ? 'No active stream gauges' : null },
-        { source: 'USGS Realtime (readings)', ok: gauges.some(g => g.latestReading), count: gauges.filter(g => g.latestReading).length, error: null },
+        { source: 'USGS OGC Stations', ok: gauges.length > 0, count: gauges.length, error: gauges.length === 0 ? 'No stations found' : null },
+        { source: 'USGS Realtime IV', ok: gauges.some(g => g.latestReading), count: gauges.filter(g => g.latestReading).length, error: null },
       ];
     }
 
@@ -31,13 +31,13 @@ export async function GET(request: Request) {
       gauges,
       total: gauges.length,
       mode,
-      sources: ['USGS Water Services', 'USGS Realtime IV'],
+      sources: ['USGS OGC API', 'USGS WaterServices IV'],
       sourceStatus,
       timestamp,
       status: gauges.length > 0 ? 'live' : 'degraded',
       notice: mode === 'flood'
         ? 'Active stream gauges with latest discharge/gage height readings. Flood stage detection included.'
-        : 'USGS monitoring station locations. Use mode=flood for realtime readings.',
+        : 'USGS monitoring station locations from OGC API. Use mode=flood for realtime readings.',
     }, {
       headers: {
         'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=900',
