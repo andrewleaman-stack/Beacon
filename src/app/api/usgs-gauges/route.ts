@@ -8,7 +8,7 @@ const USGS_GAUGE_LIMIT = Number(process.env.USGS_GAUGE_LIMIT || 500);
 export async function GET(request: Request) {
   const timestamp = new Date().toISOString();
   const { searchParams } = new URL(request.url);
-  const state = searchParams.get('state') || undefined;
+  const state = searchParams.get('state') || 'MI';
   const mode = searchParams.get('mode') || 'flood'; // 'flood' | 'stations'
 
   try {

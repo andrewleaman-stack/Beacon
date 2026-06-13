@@ -1,4 +1,4 @@
-const EPA_ECHO_BASE = 'https://echo.epa.gov/tools/web-services/facility-search-all-data';
+const EPA_ECHO_CWA_BASE = 'https://echodata.epa.gov/echo/cwa_rest_services';
 
 function clean(value) {
   return String(value ?? '').trim();
@@ -9,71 +9,90 @@ function number(value, fallback = null) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-function buildEpaEchoUrl({ state, limit = 1000, offset = 0 } = {}) {
-  const params = new URLSearchParams({
-    output: 'JSON',
-    qcolumns: '1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30',
-    limit: String(limit),
-    offset: String(offset),
+function parseCsvLine(line) {
+  const cells = [];
+  let current = '';
+  let quoted = false;
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    const next = line[i + 1];
+    if (char === '"' && quoted && next === '"') {
+      current += '"';
+      i++;
+      continue;
+    }
+    if (char === '"') {
+      quoted = !quoted;
+      continue;
+    }
+    if (char === ',' && !quoted) {
+      cells.push(current);
+      current = '';
+      continue;
+    }
+    current += char;
+  }
+  cells.push(current);
+  return cells.map(clean);
+}
+
+export function parseEpaEchoCsv(csvText) {
+  const lines = String(csvText || '').split(/\r?\n/).filter((line) => line.trim());
+  if (lines.length < 2) return [];
+  const headers = parseCsvLine(lines[0]);
+  return lines.slice(1).map((line) => {
+    const cells = parseCsvLine(line);
+    return Object.fromEntries(headers.map((header, index) => [header, cells[index] ?? '']));
   });
-  if (state) params.set('state', state);
-  return `${EPA_ECHO_BASE}?${params.toString()}`;
 }
 
 export function normalizeEpaEchoFacility(raw) {
-  const lat = number(raw.Lat83);
-  const lng = number(raw.Long83);
-  if (lat == null || lng == null) return null;
+  const lat = number(raw.FacLat || raw.Latitude || raw.Lat83 || raw.CWPLatitude, null);
+  const lng = number(raw.FacLong || raw.Longitude || raw.Long83 || raw.CWPLongitude, null);
 
+  const id = clean(raw.SourceID || raw.RegistryID || raw.FacilityID || raw.FRSID || raw.CWPID || raw.CWPName);
   return {
-    id: `epa-${raw.FacilityID || raw.FACILITY_ID || raw.REGISTRY_ID}`,
-    name: clean(raw.FacilityName || raw.FACILITY_NAME),
+    id: `epa-echo-${id}`,
+    name: clean(raw.CWPName || raw.FacilityName || raw.FacName),
     lat,
     lng,
-    address: clean(raw.StreetAddress || raw.STREET_ADDRESS),
-    city: clean(raw.CityName || raw.CITY_NAME),
-    county: clean(raw.CountyName || raw.COUNTY_NAME),
-    state: clean(raw.StateCode || raw.STATE_CODE),
-    zip: clean(raw.ZipCode || raw.ZIP_CODE),
-    programs: clean(raw.ProgramAcronyms || raw.PROGRAM_ACRONYMS),
-    complianceStatus: clean(raw.ComplianceStatus || raw.COMPLIANCE_STATUS),
-    enforcementActions: number(raw.EnforcementActionCount || raw.ENFORCEMENT_ACTION_COUNT, 0),
-    violations: number(raw.ViolationCount || raw.VIOLATION_COUNT, 0),
-    source: 'EPA ECHO',
-    sourceUrl: `https://echo.epa.gov/detailed-facility-report?fid=${raw.FacilityID || raw.REGISTRY_ID}`,
+    mappable: lat != null && lng != null,
+    address: clean(raw.CWPStreet || raw.StreetAddress || raw.FacStreet),
+    city: clean(raw.CWPCity || raw.CityName || raw.FacCity),
+    county: clean(raw.FacStdCountyName || raw.CountyName),
+    state: clean(raw.CWPState || raw.StateCode),
+    program: clean(raw.Statute || 'CWA'),
+    permitId: clean(raw.SourceID),
+    district: clean(raw.CWPStateDistrict),
+    designFlow: number(raw.CWPTotalDesignFlowNmbr),
+    peopleOfColorPercent: number(raw.PercentPeopleOfColor),
+    populationDensity: number(raw.AcsPopulationDensity),
+    effectiveDate: clean(raw.CWPEffectiveDate),
+    source: 'EPA ECHO CWA',
+    sourceUrl: id ? `https://echo.epa.gov/detailed-facility-report?fid=${encodeURIComponent(id)}` : 'https://echo.epa.gov/',
     fetchedAt: new Date().toISOString(),
   };
 }
 
-export function parseEpaEchoResponse(jsonText) {
-  try {
-    const data = JSON.parse(jsonText);
-    const results = data.Results || data.results || data;
-    return Array.isArray(results) ? results : (results?.Facilities || results?.facilities || []);
-  } catch {
-    return [];
-  }
-}
+export async function fetchEpaEchoFacilities({ state = 'MI', limit = 500, fetchImpl = fetch } = {}) {
+  const queryParams = new URLSearchParams({ output: 'JSON', p_st: state });
+  const queryResponse = await fetchImpl(`${EPA_ECHO_CWA_BASE}.get_facilities?${queryParams.toString()}`, {
+    cache: 'no-store',
+    headers: { 'User-Agent': 'BEACON/1.0 epa-echo', 'Accept': 'application/json' },
+  });
+  if (!queryResponse.ok) throw new Error(`EPA ECHO query returned HTTP ${queryResponse.status}`);
+  const queryPayload = await queryResponse.json();
+  const qid = queryPayload?.Results?.QueryID;
+  if (!qid) throw new Error('EPA ECHO query did not return QueryID');
 
-export async function fetchEpaEchoFacilities({ state, limit = 1000, fetchImpl = fetch } = {}) {
-  const allFacilities = [];
-  let offset = 0;
-  const pageSize = Math.min(limit, 1000);
-
-  while (allFacilities.length < limit) {
-    const url = buildEpaEchoUrl({ state, limit: pageSize, offset });
-    const response = await fetchImpl(url, {
-      cache: 'no-store',
-      headers: { 'User-Agent': 'BEACON/1.0 epa-echo', 'Accept': 'application/json' },
-    });
-    if (!response.ok) throw new Error(`EPA ECHO returned HTTP ${response.status}`);
-    const raw = await response.json();
-    const facilities = parseEpaEchoResponse(raw);
-    if (!facilities.length) break;
-    const normalized = facilities.map(normalizeEpaEchoFacility).filter(Boolean);
-    allFacilities.push(...normalized);
-    if (normalized.length < pageSize) break;
-    offset += pageSize;
-  }
-  return allFacilities.slice(0, limit);
+  const downloadParams = new URLSearchParams({ output: 'CSV', qid: String(qid) });
+  const downloadResponse = await fetchImpl(`${EPA_ECHO_CWA_BASE}.get_download?${downloadParams.toString()}`, {
+    cache: 'no-store',
+    headers: { 'User-Agent': 'BEACON/1.0 epa-echo', 'Accept': 'text/csv' },
+  });
+  if (!downloadResponse.ok) throw new Error(`EPA ECHO download returned HTTP ${downloadResponse.status}`);
+  return parseEpaEchoCsv(await downloadResponse.text())
+    .map(normalizeEpaEchoFacility)
+    .filter(Boolean)
+    .slice(0, limit);
 }

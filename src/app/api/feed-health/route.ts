@@ -21,6 +21,10 @@ const FEED_PROBES = [
   { path: '/api/ics-advisories', timeoutMs: 8_000, pick: (payload: any) => ({ ics_advisories: payload.advisories || [] }) },
   { path: '/api/nrc-events', timeoutMs: 8_000, pick: (payload: any) => ({ nrc_events: payload.events || [] }) },
   { path: '/api/usgs-gauges', timeoutMs: 8_000, pick: (payload: any) => ({ usgs_gauges: payload.gauges || [] }) },
+  { path: '/api/tsunami', timeoutMs: 8_000, pick: (payload: any) => ({ tsunami: payload.alerts || [] }) },
+  { path: '/api/volcano-alerts', timeoutMs: 8_000, pick: (payload: any) => ({ volcano_alerts: payload.alerts || [] }) },
+  { path: '/api/epa-echo', timeoutMs: 12_000, pick: (payload: any) => ({ epa_echo: payload.facilities || [] }) },
+  { path: '/api/power-outages', timeoutMs: 8_000, pick: (payload: any) => ({ power_outages: payload.outages || [] }) },
   { path: '/api/fema-disasters', timeoutMs: 8_000, pick: (payload: any) => ({ fema_disasters: payload.disasters || [] }) },
 ];
 
@@ -42,6 +46,10 @@ const DEFAULT_ACTIVE_LAYERS = {
   ics_advisories: false,
   nrc_events: false,
   usgs_gauges: false,
+  tsunami: false,
+  volcano_alerts: false,
+  epa_echo: false,
+  power_outages: false,
   fema_disasters: false,
   openmhz: false,
 };

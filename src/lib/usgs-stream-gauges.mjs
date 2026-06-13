@@ -35,7 +35,7 @@ export function parseRdbStations(rdbText, state) {
     const lng = number(row.dec_long_va);
     if (lat == null || lng == null) continue;
 
-    const stationState = row.state_cd || row.state_cd?.trim();
+    const stationState = clean(row.state_cd || state || '');
     if (state && stationState.toLowerCase() !== state.toLowerCase()) continue;
 
     stations.push({
@@ -44,7 +44,7 @@ export function parseRdbStations(rdbText, state) {
       siteId: clean(row.site_no),
       lat,
       lng,
-      state: clean(row.state_cd),
+      state: stationState,
       county: clean(row.county_cd || ''),
       huc: clean(row.huc_cd || ''),
       siteType: clean(row.site_tp_cd || ''),

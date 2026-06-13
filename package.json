@@ -16,6 +16,8 @@
     "test:infra-advisory-feeds": "node --test scripts/infra-advisory-feeds.test.mjs",
     "test:usgs-gauges": "node --test scripts/usgs-gauges.test.mjs",
     "test:fema-disasters": "node --test scripts/fema-disasters.test.mjs",
+    "test:tsunami": "node --test scripts/nws-tsunami.test.mjs",
+    "test:expanded-feeds": "node --test scripts/expanded-feeds.test.mjs",
     "typecheck": "tsc --noEmit",
     "smoke": "node scripts/smoke.mjs",
     "db:push": "prisma db push",

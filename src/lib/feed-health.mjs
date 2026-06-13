@@ -20,6 +20,10 @@ export const FEED_DEFINITIONS = [
   { key: 'ics_advisories', label: 'CISA ICS Advisories', dataKeys: ['ics_advisories'], layerKey: 'ics_advisories', staleAfterMs: 7 * 24 * 60 * 60_000 },
   { key: 'nrc_events', label: 'NRC Events', dataKeys: ['nrc_events'], layerKey: 'nrc_events', staleAfterMs: 7 * 24 * 60 * 60_000 },
   { key: 'usgs_gauges', label: 'USGS Stream Gauges', dataKeys: ['usgs_gauges'], layerKey: 'usgs_gauges', staleAfterMs: 4 * 60 * 60_000 },
+  { key: 'tsunami', label: 'NWS Tsunami Alerts', dataKeys: ['tsunami'], layerKey: 'tsunami', staleAfterMs: 4 * 60 * 60_000 },
+  { key: 'volcano_alerts', label: 'USGS Volcano Alerts', dataKeys: ['volcano_alerts'], layerKey: 'volcano_alerts', staleAfterMs: 4 * 60 * 60_000 },
+  { key: 'epa_echo', label: 'EPA ECHO Facilities', dataKeys: ['epa_echo'], layerKey: 'epa_echo', staleAfterMs: 7 * 24 * 60 * 60_000 },
+  { key: 'power_outages', label: 'Power Outages', dataKeys: ['power_outages'], layerKey: 'power_outages', staleAfterMs: 60 * 60_000 },
   { key: 'fema_disasters', label: 'FEMA Disasters', dataKeys: ['fema_disasters'], layerKey: 'fema_disasters', staleAfterMs: 24 * 60 * 60_000 },
   { key: 'openmhz', label: 'OpenMHz / P25', dataKeys: ['openmhz'], layerKey: 'openmhz', staleAfterMs: 6 * 60 * 60_000 },
 ];
@@ -79,6 +83,10 @@ function feedKeyFromProbePath(path) {
   if (segment === 'ics-advisories') return 'ics_advisories';
   if (segment === 'nrc-events') return 'nrc_events';
   if (segment === 'usgs-gauges') return 'usgs_gauges';
+  if (segment === 'tsunami') return 'tsunami';
+  if (segment === 'volcano-alerts') return 'volcano_alerts';
+  if (segment === 'epa-echo') return 'epa_echo';
+  if (segment === 'power-outages') return 'power_outages';
   if (segment === 'fema-disasters') return 'fema_disasters';
   if (segment === 'cyber-cve') return 'cyber_cve';
   if (segment === 'openmhz') return 'openmhz';
