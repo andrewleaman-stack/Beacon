@@ -14,6 +14,8 @@ const FEED_PROBES = [
   { path: '/api/nws-alerts', timeoutMs: 5_000, pick: (payload: any) => ({ nws_alerts: payload.alerts || [] }) },
   { path: '/api/openmhz', timeoutMs: 5_000, pick: (payload: any) => ({ openmhz: payload.feeds || [] }) },
   { path: '/api/fires', timeoutMs: 5_000, pick: (payload: any) => ({ fires: payload.fires || [] }) },
+  { path: '/api/fire-perimeters', timeoutMs: 8_000, pick: (payload: any) => ({ fire_perimeters: payload.perimeters || [] }) },
+  { path: '/api/storm-reports', timeoutMs: 8_000, pick: (payload: any) => ({ storm_reports: payload.reports || [] }) },
   { path: '/api/infrastructure-incidents', timeoutMs: 5_000, pick: (payload: any) => ({ infra_incidents: payload.incidents || [] }) },
   { path: '/api/cyber-cve', timeoutMs: 5_000, pick: (payload: any) => ({ cyber_cve: payload.cves || [] }) },
 ];
@@ -29,6 +31,8 @@ const DEFAULT_ACTIVE_LAYERS = {
   radiation: false,
   nws_alerts: false,
   fires: false,
+  fire_perimeters: false,
+  storm_reports: false,
   infra_incidents: false,
   cyber_cve: false,
   openmhz: false,

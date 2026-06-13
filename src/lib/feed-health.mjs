@@ -13,6 +13,8 @@ export const FEED_DEFINITIONS = [
   { key: 'radiation', label: 'Radiation', dataKeys: ['radiation'], layerKey: 'radiation', staleAfterMs: 5 * 60_000 },
   { key: 'nws_alerts', label: 'NWS / SPC Alerts', dataKeys: ['nws_alerts'], layerKey: 'nws_alerts', staleAfterMs: 30 * 60_000 },
   { key: 'fires', label: 'NASA FIRMS Fires', dataKeys: ['fires'], layerKey: 'fires', staleAfterMs: 60 * 60_000 },
+  { key: 'fire_perimeters', label: 'NIFC Fire Perimeters', dataKeys: ['fire_perimeters'], layerKey: 'fire_perimeters', staleAfterMs: 12 * 60 * 60_000 },
+  { key: 'storm_reports', label: 'NOAA SPC Storm Reports', dataKeys: ['storm_reports'], layerKey: 'storm_reports', staleAfterMs: 12 * 60 * 60_000 },
   { key: 'infra_incidents', label: 'Infrastructure Incidents', dataKeys: ['infra_incidents'], layerKey: 'infra_incidents', staleAfterMs: 60 * 60_000 },
   { key: 'cyber_cve', label: 'Cyber / CVE', dataKeys: ['cyber_cve'], layerKey: 'cyber_cve', staleAfterMs: 60 * 60_000 },
   { key: 'openmhz', label: 'OpenMHz / P25', dataKeys: ['openmhz'], layerKey: 'openmhz', staleAfterMs: 6 * 60 * 60_000 },
@@ -68,6 +70,8 @@ function feedKeyFromProbePath(path) {
   if (segment === 'live-news') return 'live_news';
   if (segment === 'nws-alerts') return 'nws_alerts';
   if (segment === 'infrastructure-incidents') return 'infra_incidents';
+  if (segment === 'fire-perimeters') return 'fire_perimeters';
+  if (segment === 'storm-reports') return 'storm_reports';
   if (segment === 'cyber-cve') return 'cyber_cve';
   if (segment === 'openmhz') return 'openmhz';
   return segment.replace(/-/g, '_');
