@@ -1,6 +1,7 @@
 
 import { NextResponse } from 'next/server';
 import { stealthFetch } from '@/lib/stealthFetch';
+import { fetchOpenSkyFlights } from '@/lib/opensky.mjs';
 
 /**
  * BEACON — Flight Data API
@@ -162,10 +163,15 @@ export async function GET() {
 
   // Start new global fetch
   fetchPromise = (async () => {
-    // Fetch all 6 regions in parallel
-    const regionResults = await Promise.allSettled(
-      REGIONS.map(r => fetchRegion(r))
-    );
+    // Fetch all 6 ADS-B regions plus authenticated OpenSky enrichment in parallel
+    const [regionResults, openSkyResult] = await Promise.all([
+      Promise.allSettled(REGIONS.map(r => fetchRegion(r))),
+      fetchOpenSkyFlights().catch((error) => ({
+        flights: [],
+        sourceStatus: [{ source: 'OpenSky', ok: false, count: 0, error: error instanceof Error ? error.message : String(error) }],
+        authenticated: false,
+      })),
+    ]);
 
     const allRaw: any[] = [];
     const seenHex = new Set<string>();
@@ -181,6 +187,27 @@ export async function GET() {
         }
       }
     }
+
+    const openSkyRaw: any[] = [];
+    for (const openSkyFlight of openSkyResult.flights || []) {
+      const hex = (openSkyFlight.icao24 || '').toLowerCase().trim();
+      if (hex && seenHex.has(hex)) continue;
+      if (hex) seenHex.add(hex);
+      openSkyRaw.push({
+        hex: openSkyFlight.icao24,
+        flight: openSkyFlight.callsign,
+        lat: openSkyFlight.lat,
+        lon: openSkyFlight.lng,
+        alt_baro: Math.round((openSkyFlight.alt || 0) / 0.3048),
+        gs: openSkyFlight.speed_knots,
+        track: openSkyFlight.heading,
+        squawk: openSkyFlight.squawk,
+        t: openSkyFlight.model,
+        dbFlags: openSkyFlight.category === 'military' ? 1 : 0,
+        source: 'OpenSky',
+      });
+    }
+    allRaw.push(...openSkyRaw);
 
     // Classify all flights
     const commercial: any[] = [];
@@ -221,6 +248,11 @@ export async function GET() {
       military_flights: military,
       gps_jamming: jammingZones,
       total: allRaw.length,
+      sources: [
+        { source: 'adsb.lol', ok: true, count: allRaw.length - openSkyRaw.length, error: null },
+        ...(openSkyResult.sourceStatus || []),
+      ],
+      opensky_authenticated: Boolean(openSkyResult.authenticated),
       timestamp: new Date().toISOString(),
     };
   })();

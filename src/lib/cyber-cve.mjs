@@ -1,5 +1,7 @@
 const KEV_URL = 'https://raw.githubusercontent.com/cisagov/kev-data/develop/known_exploited_vulnerabilities.json';
 const OSV_API_BASE = 'https://api.osv.dev/v1';
+const NVD_API_BASE = 'https://services.nvd.nist.gov/rest/json/cves/2.0';
+const GHSA_API_BASE = 'https://api.github.com/advisories';
 
 function text(value, fallback = '') {
   return String(value ?? fallback).trim();
@@ -23,6 +25,15 @@ function priorityForSeverity(severity) {
   if (severity === 'medium') return 45;
   if (severity === 'low') return 20;
   return 10;
+}
+
+function severityFromScore(score) {
+  const numeric = Number(score);
+  if (!Number.isFinite(numeric)) return 'unknown';
+  if (numeric >= 9) return 'critical';
+  if (numeric >= 7) return 'high';
+  if (numeric >= 4) return 'medium';
+  return 'low';
 }
 
 function parseCvssScore(score) {
@@ -50,10 +61,7 @@ function severityFromOsv(severity = []) {
   }
 
   const max = Math.max(...scores);
-  if (max >= 9) return 'critical';
-  if (max >= 7) return 'high';
-  if (max >= 4) return 'medium';
-  return 'low';
+  return severityFromScore(max);
 }
 
 function referenceUrls(value) {
@@ -63,6 +71,38 @@ function referenceUrls(value) {
   return text(value)
     .split(/\s+/)
     .filter((item) => /^https?:\/\//i.test(item));
+}
+
+function firstEnglishDescription(descriptions = []) {
+  return text(asArray(descriptions).find((item) => item?.lang === 'en')?.value || descriptions?.[0]?.value);
+}
+
+function firstCpeProduct(configurations = []) {
+  const matches = [];
+  const visitNode = (node) => {
+    for (const match of asArray(node?.cpeMatch)) matches.push(match?.criteria);
+    for (const child of asArray(node?.children)) visitNode(child);
+  };
+  for (const configuration of asArray(configurations)) {
+    for (const node of asArray(configuration?.nodes)) visitNode(node);
+  }
+  const cpe = text(matches.find(Boolean));
+  const parts = cpe.split(':');
+  return {
+    vendor: parts[3] || 'Unknown',
+    product: parts[4] || 'Unknown',
+  };
+}
+
+function nvdMetric(cve = {}) {
+  const metrics = cve.metrics || {};
+  const metric = asArray(metrics.cvssMetricV31)[0]
+    || asArray(metrics.cvssMetricV30)[0]
+    || asArray(metrics.cvssMetricV2)[0]
+    || {};
+  const score = metric.cvssData?.baseScore;
+  const severity = text(metric.cvssData?.baseSeverity || metric.baseSeverity || severityFromScore(score)).toLowerCase();
+  return { score, severity };
 }
 
 export function normalizeKevCatalog(payload) {
@@ -110,6 +150,55 @@ export function normalizeOsvVulnerability(item) {
     url: `https://osv.dev/vulnerability/${encodeURIComponent(text(item?.id || cve))}`,
     references: referenceUrls(item?.references),
     cwes: asArray(item?.database_specific?.cwe_ids),
+  };
+}
+
+export function normalizeNvdVulnerability(item) {
+  const cve = item?.cve || item || {};
+  const metric = nvdMetric(cve);
+  const product = firstCpeProduct(cve.configurations);
+  const id = text(cve.id);
+  return {
+    id,
+    cve: id,
+    title: id,
+    description: firstEnglishDescription(cve.descriptions),
+    severity: metric.severity || 'unknown',
+    priority: priorityForSeverity(metric.severity || 'unknown'),
+    cvssScore: metric.score ?? null,
+    exploited: false,
+    ransomwareUse: 'Unknown',
+    vendor: product.vendor,
+    product: product.product,
+    published: text(cve.published),
+    dueDate: '',
+    source: 'NVD',
+    url: `https://nvd.nist.gov/vuln/detail/${encodeURIComponent(id)}`,
+    references: referenceUrls(cve.references?.referenceData),
+    cwes: asArray(cve.weaknesses).flatMap((weakness) => asArray(weakness.description).map((description) => text(description.value)).filter(Boolean)),
+  };
+}
+
+export function normalizeGhsaAdvisory(item) {
+  const firstPackage = asArray(item?.vulnerabilities).map((vulnerability) => vulnerability?.package).find(Boolean) || {};
+  const severity = text(item?.severity, 'unknown').toLowerCase();
+  return {
+    id: text(item?.ghsa_id || item?.id),
+    cve: text(item?.cve_id || item?.ghsa_id || item?.id),
+    title: text(item?.summary || item?.ghsa_id),
+    description: text(item?.description || item?.summary),
+    severity,
+    priority: priorityForSeverity(severity),
+    exploited: false,
+    ransomwareUse: 'Unknown',
+    vendor: text(firstPackage.ecosystem, 'GitHub Advisory'),
+    product: text(firstPackage.name, 'Unknown package'),
+    published: text(item?.published_at || item?.updated_at),
+    dueDate: '',
+    source: 'GHSA',
+    url: text(item?.html_url || item?.url),
+    references: [text(item?.html_url || item?.url)].filter(Boolean),
+    cwes: asArray(item?.cwes).map((cwe) => text(cwe.cwe_id || cwe.name || cwe)).filter(Boolean),
   };
 }
 
@@ -177,17 +266,63 @@ export async function fetchOsvByIds(ids, fetchImpl = fetch) {
     .map((result) => result.value);
 }
 
+export async function fetchNvdRecent({ apiKey = process.env.NVD_API_KEY, fetchImpl = fetch, days = 7 } = {}) {
+  const end = new Date();
+  const start = new Date(end.getTime() - days * 24 * 60 * 60_000);
+  const params = new URLSearchParams({
+    lastModStartDate: start.toISOString(),
+    lastModEndDate: end.toISOString(),
+    resultsPerPage: '50',
+  });
+  const response = await fetchImpl(`${NVD_API_BASE}?${params.toString()}`, {
+    cache: 'no-store',
+    headers: {
+      'User-Agent': 'BEACON/1.0 cyber-cve-feed',
+      ...(apiKey ? { apiKey } : {}),
+    },
+  });
+  if (!response.ok) throw new Error(`NVD returned HTTP ${response.status}`);
+  const payload = await response.json();
+  return asArray(payload.vulnerabilities).map(normalizeNvdVulnerability).filter((item) => item.cve);
+}
+
+export async function fetchGhsaRecent({ token = process.env.GITHUB_TOKEN, fetchImpl = fetch } = {}) {
+  const params = new URLSearchParams({ per_page: '50', sort: 'published', direction: 'desc' });
+  const response = await fetchImpl(`${GHSA_API_BASE}?${params.toString()}`, {
+    cache: 'no-store',
+    headers: {
+      Accept: 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2026-03-10',
+      'User-Agent': 'BEACON/1.0 cyber-cve-feed',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
+  if (!response.ok) throw new Error(`GHSA returned HTTP ${response.status}`);
+  return asArray(await response.json()).map(normalizeGhsaAdvisory).filter((item) => item.id);
+}
+
 export async function fetchCyberCveFeed({ fetchImpl = fetch } = {}) {
-  const kev = await fetchKevCatalog(fetchImpl);
+  const [kevResult, nvdResult, ghsaResult] = await Promise.allSettled([
+    fetchKevCatalog(fetchImpl),
+    fetchNvdRecent({ fetchImpl }),
+    fetchGhsaRecent({ fetchImpl }),
+  ]);
+
+  if (kevResult.status !== 'fulfilled') throw kevResult.reason;
+  const kev = kevResult.value;
+  const nvd = nvdResult.status === 'fulfilled' ? nvdResult.value : [];
+  const ghsa = ghsaResult.status === 'fulfilled' ? ghsaResult.value : [];
   const recentKev = sortCvesByPriority(kev).slice(0, 50);
   const osv = await fetchOsvByIds(recentKev.slice(0, 25).map((item) => item.cve), fetchImpl);
-  const cves = sortCvesByPriority(mergeCves([...recentKev, ...osv]));
+  const cves = sortCvesByPriority(mergeCves([...recentKev, ...osv, ...nvd, ...ghsa]));
 
   return {
     cves,
     sourceStatus: [
       { source: 'CISA KEV', ok: true, count: kev.length, error: null },
       { source: 'OSV', ok: true, count: osv.length, error: null },
+      { source: 'NVD', ok: nvdResult.status === 'fulfilled', count: nvd.length, error: nvdResult.status === 'rejected' ? (nvdResult.reason instanceof Error ? nvdResult.reason.message : String(nvdResult.reason)) : null },
+      { source: 'GHSA', ok: ghsaResult.status === 'fulfilled', count: ghsa.length, error: ghsaResult.status === 'rejected' ? (ghsaResult.reason instanceof Error ? ghsaResult.reason.message : String(ghsaResult.reason)) : null },
     ],
   };
 }
