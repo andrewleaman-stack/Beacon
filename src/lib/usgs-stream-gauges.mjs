@@ -1,4 +1,5 @@
-const USGS_WATER_BASE = 'https://api.waterdata.usgs.gov/ogcapi/v0';
+const USGS_OGC_BASE = 'https://api.waterdata.usgs.gov/ogcapi/v0';
+const USGS_WATER_SERVICES = 'https://waterservices.usgs.gov/nwis';
 
 function clean(value) {
   return String(value ?? '').trim();
@@ -9,60 +10,136 @@ function number(value, fallback = null) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-function buildUsgsGaugesUrl({ state, limit = 500, parameterCodes = ['00060', '00065'], bbox } = {}) {
-  const params = new URLSearchParams({
-    format: 'json',
-  });
-  if (state) params.set('stateCd', state);
-  if (parameterCodes.length) params.set('parameterCd', parameterCodes.join(','));
-  if (bbox) params.set('bbox', bbox);
-  return `https://waterservices.usgs.gov/nwis/iv/?${params.toString()}`;
+/**
+ * OGC API - fetch stations (no state filter support, filter in memory)
+ * @param {{ state?: string; limit?: number; fetchImpl?: typeof fetch }} options
+ * @returns {Promise<any[]>}
+ */
+export async function fetchUsgsStations({ state, limit = 1000, fetchImpl = fetch } = {}) {
+  const allStations = [];
+  let offset = 0;
+  const pageSize = 500;
+
+  while (allStations.length < limit) {
+    const params = new URLSearchParams({
+      f: 'json',
+      limit: String(pageSize),
+      offset: String(offset),
+    });
+    const url = `${USGS_OGC_BASE}/collections/monitoring-locations/items?${params.toString()}`;
+    const response = await fetchImpl(url, {
+      cache: 'no-store',
+      headers: { 'User-Agent': 'BEACON/1.0 usgs-stations' },
+    });
+    if (!response.ok) throw new Error(`USGS OGC stations returned HTTP ${response.status}`);
+    const data = await response.json();
+    const features = data.features || [];
+    if (!features.length) break;
+
+    for (const feature of features) {
+      const station = normalizeUsgsOGCStation(feature);
+      if (station && (!state || station.state === state.toUpperCase())) {
+        allStations.push(station);
+        if (allStations.length >= limit) break;
+      }
+    }
+    if (features.length < pageSize) break;
+    offset += pageSize;
+  }
+  return allStations.slice(0, limit);
 }
 
-function buildUsgsRealtimeUrl({ sites, parameterCodes = ['00060', '00065'], limit = 500 } = {}) {
+/**
+ * nwis/iv - fetch realtime readings for given site IDs
+ * @param {{ siteIds: string[]; parameterCodes?: string[]; fetchImpl?: typeof fetch }} options
+ * @returns {Promise<any[]>}
+ */
+export async function fetchUsgsRealtime({ siteIds, parameterCodes = ['00060', '00065'], fetchImpl = fetch } = {}) {
+  if (!siteIds?.length) return [];
   const params = new URLSearchParams({
     format: 'json',
-    sites: sites.join(','),
+    sites: siteIds.join(','),
     parameterCd: parameterCodes.join(','),
     siteStatus: 'active',
   });
-  return `https://waterservices.usgs.gov/nwis/iv/?${params.toString()}`;
+  const url = `${USGS_WATER_SERVICES}/iv/?${params.toString()}`;
+  const response = await fetchImpl(url, {
+    cache: 'no-store',
+    headers: { 'User-Agent': 'BEACON/1.0 usgs-realtime' },
+  });
+  if (!response.ok) throw new Error(`USGS realtime returned HTTP ${response.status}`);
+  const data = await response.json();
+  const series = data?.value?.timeSeries || [];
+  return series.map(normalizeUsgsRealtime).filter(Boolean);
 }
 
-function parseUsgsGaugeFeature(feature) {
+/**
+ * Flood mode: get stations for state, then realtime readings
+ * @param {{ state?: string; limit?: number; fetchImpl?: typeof fetch }} options
+ * @returns {Promise<any[]>}
+ */
+export async function fetchUsgsFloodGauges({ state, limit = 200, fetchImpl = fetch } = {}) {
+  const stations = await fetchUsgsStations({ state, limit, fetchImpl });
+  if (!stations.length) return [];
+
+  // Filter to stream/river types
+  const streamStations = stations.filter(s =>
+    s.siteType?.includes('ST') || s.siteType?.includes('stream') || s.siteType?.includes('river')
+  ).slice(0, 200);
+
+  const siteIds = streamStations.map(s => s.siteId);
+  const realtime = await fetchUsgsRealtime({ siteIds, parameterCodes: ['00060', '00065', '00062'], fetchImpl });
+
+  // Merge readings back to stations
+  const bySite = new Map();
+  for (const rt of realtime) {
+    const existing = bySite.get(rt.siteId) || { station: streamStations.find(s => s.siteId === rt.siteId), readings: [] };
+    existing.readings.push(rt);
+    bySite.set(rt.siteId, existing);
+  }
+
+  return Array.from(bySite.values())
+    .map(({ station, readings }) => ({
+      ...station,
+      readings: readings.sort((a, b) => new Date(b.time || 0) - new Date(a.time || 0)),
+      latestReading: readings[0] || null,
+      floodStage: readings.some(r => r.parameterCode === '00065' && r.value != null && r.value > (r.floodStage || 10)),
+    }))
+    .filter(g => g.lat != null && g.lng != null);
+}
+
+/**
+ * Normalize OGC API station feature to BEACON format
+ */
+export function normalizeUsgsOGCStation(feature) {
   const props = feature?.properties || {};
-  const sourceInfo = props.sourceInfo || {};
-  const site = sourceInfo.siteCode?.[0]?.value || sourceInfo.siteName || '';
-  const lat = number(sourceInfo.geoLocation?.geogLocation?.latitude);
-  const lng = number(sourceInfo.geoLocation?.geogLocation?.longitude);
+  const geom = feature?.geometry || {};
+  const coords = geom.coordinates || [];
+  const lng = number(coords[0]);
+  const lat = number(coords[1]);
   if (lat == null || lng == null) return null;
 
-  const siteCode = sourceInfo.siteCode?.[0]?.value || '';
-  const siteName = sourceInfo.siteName || 'USGS Gauge';
-  const siteType = sourceInfo.siteProperty?.find(p => p.name === 'siteTypeCd')?.value || '';
-  const agency = sourceInfo.agencyCode || sourceInfo.agency_code || 'USGS';
-  const stateCode = sourceInfo.siteProperty?.find(p => p.name === 'stateCd')?.value || '';
-  const countyCd = sourceInfo.countyCd || sourceInfo.siteProperty?.find(p => p.name === 'countyCd')?.value || '';
-  const hucCd = sourceInfo.siteProperty?.find(p => p.name === 'hucCd')?.value || '';
-
   return {
-    id: `usgs-gauge-${siteCode}`,
-    name: clean(siteName),
-    siteId: clean(siteCode),
+    id: `usgs-gauge-${props.monitoring_location_id || props.id}`,
+    name: clean(props.monitoring_location_name || props.site_name || 'USGS Gauge'),
+    siteId: clean(props.monitoring_location_id || props.site_no || props.id),
     lat,
     lng,
-    state: clean(stateCode),
-    county: clean(countyCd),
-    huc: clean(hucCd),
-    siteType: clean(siteType),
-    agency: clean(agency),
-    source: 'USGS Water Services',
-    sourceUrl: `https://waterdata.usgs.gov/monitoring-location/${siteCode}`,
+    state: clean(props.state_code || props.state_cd),
+    county: clean(props.county_name || props.county_cd),
+    huc: clean(props.hydrologic_unit_code || props.huc_cd),
+    siteType: clean(props.site_type_code || props.site_tp_cd),
+    agency: clean(props.agency_code || props.agency_cd),
+    source: 'USGS Water Services (OGC)',
+    sourceUrl: `https://waterdata.usgs.gov/monitoring-location/${props.monitoring_location_id || props.site_no}`,
     fetchedAt: new Date().toISOString(),
   };
 }
 
-function parseUsgsRealtimeFeature(feature) {
+/**
+ * Normalize WaterServices realtime time series to BEACON reading
+ */
+export function normalizeUsgsRealtime(feature) {
   const props = feature?.properties || {};
   const sourceInfo = props.sourceInfo || {};
   const site = sourceInfo.siteCode?.[0]?.value || sourceInfo.siteName || '';
@@ -91,73 +168,8 @@ function parseUsgsRealtimeFeature(feature) {
     time: latestTime,
     lat,
     lng,
-    source: 'USGS Realtime',
+    source: 'USGS Realtime (IV)',
     sourceUrl: `https://waterdata.usgs.gov/monitoring-location/${site}`,
     fetchedAt: new Date().toISOString(),
   };
-}
-
-export function normalizeUsgsGauge(feature) {
-  return parseUsgsGaugeFeature(feature);
-}
-
-export function normalizeUsgsRealtime(feature) {
-  return parseUsgsRealtimeFeature(feature);
-}
-
-/**
- * @param {{ state?: string; limit?: number; fetchImpl?: typeof fetch }} options
- * @returns {Promise<any[]>}
- */
-export async function fetchUsgsGauges({ state, limit = 500, fetchImpl = fetch } = {}) {
-  const url = buildUsgsGaugesUrl({ state, limit });
-  const response = await fetchImpl(url, {
-    cache: 'no-store',
-    headers: { 'User-Agent': 'BEACON/1.0 usgs-gauges' },
-  });
-  if (!response.ok) throw new Error(`USGS gauges returned HTTP ${response.status}`);
-  const data = await response.json();
-  return (data.features || []).map(normalizeUsgsGauge).filter(Boolean);
-}
-
-/**
- * @param {{ siteIds?: string[]; parameterCodes?: string[]; fetchImpl?: typeof fetch }} options
- * @returns {Promise<any[]>}
- */
-export async function fetchUsgsRealtime({ siteIds, parameterCodes = ['00060', '00065'], fetchImpl = fetch } = {}) {
-  if (!siteIds?.length) return [];
-  const url = buildUsgsRealtimeUrl({ sites: siteIds, parameterCodes });
-  const response = await fetchImpl(url, {
-    cache: 'no-store',
-    headers: { 'User-Agent': 'BEACON/1.0 usgs-realtime' },
-  });
-  if (!response.ok) throw new Error(`USGS realtime returned HTTP ${response.status}`);
-  const data = await response.json();
-  const series = data?.value?.timeSeries || [];
-  return series.map(normalizeUsgsRealtime).filter(Boolean);
-}
-
-/**
- * @param {{ state?: string; fetchImpl?: typeof fetch }} options
- * @returns {Promise<any[]>}
- */
-export async function fetchUsgsFloodGauges({ state, fetchImpl = fetch } = {}) {
-  const gauges = await fetchUsgsGauges({ state, limit: 2000, fetchImpl });
-  const streamGauges = gauges.filter(g => g.siteType?.includes('ST') || g.siteType?.includes('stream'));
-  const siteIds = streamGauges.map(g => g.siteId).slice(0, 200);
-  const realtime = await fetchUsgsRealtime({ siteIds, parameterCodes: ['00060', '00065', '00062'], fetchImpl });
-  const bySite = new Map();
-  for (const rt of realtime) {
-    const existing = bySite.get(rt.siteId) || { gauge: gauges.find(g => g.siteId === rt.siteId), readings: [] };
-    existing.readings.push(rt);
-    bySite.set(rt.siteId, existing);
-  }
-  return Array.from(bySite.values())
-    .map(({ gauge, readings }) => ({
-      ...gauge,
-      readings: readings.sort((a, b) => new Date(b.time || 0) - new Date(a.time || 0)),
-      latestReading: readings[0] || null,
-      floodStage: readings.some(r => r.parameterCode === '00065' && r.value != null && r.value > (r.floodStage || 10)),
-    }))
-    .filter(g => g.lat != null && g.lng != null);
 }
