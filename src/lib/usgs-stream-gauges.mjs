@@ -1,4 +1,3 @@
-const USGS_OGC_BASE = 'https://api.waterdata.usgs.gov/ogcapi/v0';
 const USGS_WATER_SERVICES = 'https://waterservices.usgs.gov/nwis';
 
 function clean(value) {
@@ -11,42 +10,72 @@ function number(value, fallback = null) {
 }
 
 /**
- * OGC API - fetch stations (no state filter support, filter in memory)
+ * Parse RDB (tab-delimited) format from nwis/site
+ * @param {string} rdbText
+ * @param {string} [state] - optional state filter
+ * @returns {any[]}
+ */
+export function parseRdbStations(rdbText, state) {
+  const lines = rdbText.split('\n').filter(l => l.trim() && !l.startsWith('#'));
+  if (lines.length < 2) return [];
+
+  const headers = lines[0].split('\t');
+  const stations = [];
+
+  for (let i = 1; i < lines.length; i++) {
+    const values = lines[i].split('\t');
+    if (values.length < headers.length) continue;
+
+    const row = Object.fromEntries(headers.map((h, idx) => [h, values[idx] ?? '']));
+
+    const lat = number(row.dec_lat_va);
+    const lng = number(row.dec_long_va);
+    if (lat == null || lng == null) continue;
+
+    const stationState = row.state_cd || row.state_cd?.trim();
+    if (state && stationState.toLowerCase() !== state.toLowerCase()) continue;
+
+    stations.push({
+      id: `usgs-gauge-${row.site_no}`,
+      name: clean(row.station_nm || 'USGS Gauge'),
+      siteId: clean(row.site_no),
+      lat,
+      lng,
+      state: clean(row.state_cd),
+      county: clean(row.county_cd || ''),
+      huc: clean(row.huc_cd || ''),
+      siteType: clean(row.site_tp_cd || ''),
+      agency: clean(row.agency_cd || 'USGS'),
+      source: 'USGS Water Services (nwis/site RDB)',
+      sourceUrl: `https://waterdata.usgs.gov/monitoring-location/${row.site_no}`,
+      fetchedAt: new Date().toISOString(),
+    });
+  }
+  return stations;
+}
+
+/**
+ * Fetch stations from nwis/site RDB endpoint
  * @param {{ state?: string; limit?: number; fetchImpl?: typeof fetch }} options
  * @returns {Promise<any[]>}
  */
 export async function fetchUsgsStations({ state, limit = 1000, fetchImpl = fetch } = {}) {
-  const allStations = [];
-  let offset = 0;
-  const pageSize = 500;
+  const params = new URLSearchParams({
+    format: 'rdb',
+    siteStatus: 'active',
+  });
+  if (state) params.set('stateCd', state);
 
-  while (allStations.length < limit) {
-    const params = new URLSearchParams({
-      f: 'json',
-      limit: String(pageSize),
-      offset: String(offset),
-    });
-    const url = `${USGS_OGC_BASE}/collections/monitoring-locations/items?${params.toString()}`;
-    const response = await fetchImpl(url, {
-      cache: 'no-store',
-      headers: { 'User-Agent': 'BEACON/1.0 usgs-stations' },
-    });
-    if (!response.ok) throw new Error(`USGS OGC stations returned HTTP ${response.status}`);
-    const data = await response.json();
-    const features = data.features || [];
-    if (!features.length) break;
+  const url = `${USGS_WATER_SERVICES}/site/?${params.toString()}`;
+  const response = await fetchImpl(url, {
+    cache: 'no-store',
+    headers: { 'User-Agent': 'BEACON/1.0 usgs-stations' },
+  });
+  if (!response.ok) throw new Error(`USGS nwis/site returned HTTP ${response.status}`);
 
-    for (const feature of features) {
-      const station = normalizeUsgsOGCStation(feature);
-      if (station && (!state || station.state === state.toUpperCase())) {
-        allStations.push(station);
-        if (allStations.length >= limit) break;
-      }
-    }
-    if (features.length < pageSize) break;
-    offset += pageSize;
-  }
-  return allStations.slice(0, limit);
+  const rdbText = await response.text();
+  const stations = parseRdbStations(rdbText, state);
+  return stations.slice(0, limit);
 }
 
 /**
@@ -82,7 +111,6 @@ export async function fetchUsgsFloodGauges({ state, limit = 200, fetchImpl = fet
   const stations = await fetchUsgsStations({ state, limit, fetchImpl });
   if (!stations.length) return [];
 
-  // Filter to stream/river types
   const streamStations = stations.filter(s =>
     s.siteType?.includes('ST') || s.siteType?.includes('stream') || s.siteType?.includes('river')
   ).slice(0, 200);
@@ -90,7 +118,6 @@ export async function fetchUsgsFloodGauges({ state, limit = 200, fetchImpl = fet
   const siteIds = streamStations.map(s => s.siteId);
   const realtime = await fetchUsgsRealtime({ siteIds, parameterCodes: ['00060', '00065', '00062'], fetchImpl });
 
-  // Merge readings back to stations
   const bySite = new Map();
   for (const rt of realtime) {
     const existing = bySite.get(rt.siteId) || { station: streamStations.find(s => s.siteId === rt.siteId), readings: [] };
@@ -106,34 +133,6 @@ export async function fetchUsgsFloodGauges({ state, limit = 200, fetchImpl = fet
       floodStage: readings.some(r => r.parameterCode === '00065' && r.value != null && r.value > (r.floodStage || 10)),
     }))
     .filter(g => g.lat != null && g.lng != null);
-}
-
-/**
- * Normalize OGC API station feature to BEACON format
- */
-export function normalizeUsgsOGCStation(feature) {
-  const props = feature?.properties || {};
-  const geom = feature?.geometry || {};
-  const coords = geom.coordinates || [];
-  const lng = number(coords[0]);
-  const lat = number(coords[1]);
-  if (lat == null || lng == null) return null;
-
-  return {
-    id: `usgs-gauge-${props.monitoring_location_id || props.id}`,
-    name: clean(props.monitoring_location_name || props.site_name || 'USGS Gauge'),
-    siteId: clean(props.monitoring_location_id || props.site_no || props.id),
-    lat,
-    lng,
-    state: clean(props.state_code || props.state_cd),
-    county: clean(props.county_name || props.county_cd),
-    huc: clean(props.hydrologic_unit_code || props.huc_cd),
-    siteType: clean(props.site_type_code || props.site_tp_cd),
-    agency: clean(props.agency_code || props.agency_cd),
-    source: 'USGS Water Services (OGC)',
-    sourceUrl: `https://waterdata.usgs.gov/monitoring-location/${props.monitoring_location_id || props.site_no}`,
-    fetchedAt: new Date().toISOString(),
-  };
 }
 
 /**
