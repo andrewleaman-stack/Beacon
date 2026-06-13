@@ -18,6 +18,8 @@ const FEED_PROBES = [
   { path: '/api/storm-reports', timeoutMs: 8_000, pick: (payload: any) => ({ storm_reports: payload.reports || [] }) },
   { path: '/api/infrastructure-incidents', timeoutMs: 5_000, pick: (payload: any) => ({ infra_incidents: payload.incidents || [] }) },
   { path: '/api/cyber-cve', timeoutMs: 5_000, pick: (payload: any) => ({ cyber_cve: payload.cves || [] }) },
+  { path: '/api/ics-advisories', timeoutMs: 8_000, pick: (payload: any) => ({ ics_advisories: payload.advisories || [] }) },
+  { path: '/api/nrc-events', timeoutMs: 8_000, pick: (payload: any) => ({ nrc_events: payload.events || [] }) },
 ];
 
 const DEFAULT_ACTIVE_LAYERS = {
@@ -35,6 +37,8 @@ const DEFAULT_ACTIVE_LAYERS = {
   storm_reports: false,
   infra_incidents: false,
   cyber_cve: false,
+  ics_advisories: false,
+  nrc_events: false,
   openmhz: false,
 };
 function hasEventTime(item: Record<string, unknown>) {

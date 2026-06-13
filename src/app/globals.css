@@ -162,6 +162,40 @@ html, body {
   font-variant-numeric: tabular-nums;
 }
 
+.dashboard-shell {
+  font-size: calc(14px * var(--dashboard-font-scale, 1));
+}
+
+.dashboard-shell .hud-text,
+.dashboard-shell .font-mono,
+.dashboard-shell .maplibregl-popup {
+  font-size-adjust: none;
+}
+
+.dashboard-shell[data-density="comfortable"] .glass-panel,
+.dashboard-shell[data-density="comfortable"] .glass-panel-sm {
+  letter-spacing: 0.02em;
+}
+
+.view-step-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 24px;
+  flex: 1;
+  border-radius: 6px;
+  border: 1px solid rgba(255,255,255,0.1);
+  color: rgba(255,255,255,0.68);
+  background: rgba(255,255,255,0.04);
+  transition: all 0.18s ease;
+}
+
+.view-step-btn:hover {
+  color: var(--gold-primary);
+  border-color: rgba(212,175,55,0.45);
+  background: rgba(212,175,55,0.1);
+}
+
 /* ═══════════════════════════════════════════════════════════════
    ANIMATIONS
    ═══════════════════════════════════════════════════════════════ */

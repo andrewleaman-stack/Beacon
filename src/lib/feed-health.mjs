@@ -17,6 +17,8 @@ export const FEED_DEFINITIONS = [
   { key: 'storm_reports', label: 'NOAA SPC Storm Reports', dataKeys: ['storm_reports'], layerKey: 'storm_reports', staleAfterMs: 12 * 60 * 60_000 },
   { key: 'infra_incidents', label: 'Infrastructure Incidents', dataKeys: ['infra_incidents'], layerKey: 'infra_incidents', staleAfterMs: 60 * 60_000 },
   { key: 'cyber_cve', label: 'Cyber / CVE', dataKeys: ['cyber_cve'], layerKey: 'cyber_cve', staleAfterMs: 60 * 60_000 },
+  { key: 'ics_advisories', label: 'CISA ICS Advisories', dataKeys: ['ics_advisories'], layerKey: 'ics_advisories', staleAfterMs: 7 * 24 * 60 * 60_000 },
+  { key: 'nrc_events', label: 'NRC Events', dataKeys: ['nrc_events'], layerKey: 'nrc_events', staleAfterMs: 7 * 24 * 60 * 60_000 },
   { key: 'openmhz', label: 'OpenMHz / P25', dataKeys: ['openmhz'], layerKey: 'openmhz', staleAfterMs: 6 * 60 * 60_000 },
 ];
 
@@ -72,6 +74,8 @@ function feedKeyFromProbePath(path) {
   if (segment === 'infrastructure-incidents') return 'infra_incidents';
   if (segment === 'fire-perimeters') return 'fire_perimeters';
   if (segment === 'storm-reports') return 'storm_reports';
+  if (segment === 'ics-advisories') return 'ics_advisories';
+  if (segment === 'nrc-events') return 'nrc_events';
   if (segment === 'cyber-cve') return 'cyber_cve';
   if (segment === 'openmhz') return 'openmhz';
   return segment.replace(/-/g, '_');

@@ -10,13 +10,14 @@ interface BeaconMapProps {
   onEntityClick?: (entity: any) => void;
   onMouseCoords?: (coords: { lat: number; lng: number }) => void;
   onRightClick?: (coords: { lat: number; lng: number }) => void;
-  onViewStateChange?: (vs: { zoom: number; latitude: number }) => void;
-  flyToLocation?: { lat: number; lng: number; ts: number } | null;
+  onViewStateChange?: (vs: { zoom: number; latitude: number; longitude: number }) => void;
+  flyToLocation?: { lat: number; lng: number; zoom?: number; ts: number } | null;
   projection?: 'mercator' | 'globe';
   mapStyle?: string;
   sweepData?: any;
   scanTargets?: any[];
   demoMode?: boolean;
+  visualScale?: number;
 }
 
 function computeSolarTerminator(): [number, number][] {
@@ -41,12 +42,13 @@ function computeSolarTerminator(): [number, number][] {
 
 const EMPTY_FC = { type: 'FeatureCollection' as const, features: [] };
 
-function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightClick, onViewStateChange, flyToLocation, projection = 'globe', mapStyle = 'dark', sweepData, scanTargets = [], demoMode = false }: BeaconMapProps) {
+function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightClick, onViewStateChange, flyToLocation, projection = 'globe', mapStyle = 'dark', sweepData, scanTargets = [], demoMode = false, visualScale = 1 }: BeaconMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const popupRef = useRef<maplibregl.Popup | null>(null);
   const [mapReady, setMapReady] = useState(false);
   const prevStyleRef = useRef(mapStyle);
+  const baseVisualValuesRef = useRef<Map<string, any>>(new Map());
 
   // Create aircraft icon on canvas (for WebGL symbol layer)
   const createIcon = useCallback((map: maplibregl.Map, id: string, color: string, size: number) => {
@@ -137,7 +139,7 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
     const map = new maplibregl.Map({
       container: containerRef.current,
       style: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
-      center: [25.48, 42.70], zoom: 6.5, minZoom: 1.5, maxZoom: 18,
+      center: [0, 20], zoom: 2.5, minZoom: 1.5, maxZoom: 18,
       attributionControl: false,
       maxPitch: 85,
       transformRequest: (url: string) => {
@@ -558,7 +560,7 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
       }
     });
     map.on('contextmenu', e => { e.preventDefault(); onRightClick?.({ lat: e.lngLat.lat, lng: e.lngLat.lng }); });
-    map.on('moveend', () => { const c = map.getCenter(); onViewStateChange?.({ zoom: map.getZoom(), latitude: c.lat }); });
+    map.on('moveend', () => { const c = map.getCenter(); onViewStateChange?.({ zoom: map.getZoom(), latitude: c.lat, longitude: c.lng }); });
 
     // ── POPUP HELPER ──
     const popup = (coords: any, html: string) => {
@@ -1343,10 +1345,42 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
     if (src) src.setData({ type: 'FeatureCollection', features });
   }, [scanTargets, mapReady]);
 
+  // Operator icon-size control: scale map symbols/circles without touching data.
+  useEffect(() => {
+    if (!mapReady || !mapRef.current) return;
+    const map = mapRef.current;
+    const scale = Math.max(0.8, Math.min(1.4, visualScale || 1));
+    const scalableProps = [
+      { kind: 'paint' as const, prop: 'circle-radius' },
+      { kind: 'layout' as const, prop: 'icon-size' },
+      { kind: 'layout' as const, prop: 'text-size', textScale: 0.75 },
+    ];
+
+    try {
+      for (const layer of map.getStyle().layers || []) {
+        for (const item of scalableProps) {
+          const key = `${layer.id}:${item.kind}:${item.prop}`;
+          const getter = item.kind === 'paint' ? map.getPaintProperty.bind(map) : map.getLayoutProperty.bind(map);
+          const setter = item.kind === 'paint' ? map.setPaintProperty.bind(map) : map.setLayoutProperty.bind(map);
+          let base = baseVisualValuesRef.current.get(key);
+          if (base === undefined) {
+            base = getter(layer.id, item.prop as any);
+            if (base === undefined) continue;
+            baseVisualValuesRef.current.set(key, base);
+          }
+          const propScale = item.textScale ? 1 + ((scale - 1) * item.textScale) : scale;
+          setter(layer.id, item.prop as any, propScale === 1 ? base : ['*', base, Number(propScale.toFixed(2))] as any);
+        }
+      }
+    } catch (error) {
+      console.warn('[BEACON] Visual scale update failed:', error);
+    }
+  }, [mapReady, visualScale]);
+
   // Fly-to
   useEffect(() => {
     if (!mapReady || !mapRef.current || !flyToLocation) return;
-    mapRef.current.flyTo({ center: [flyToLocation.lng, flyToLocation.lat], zoom: 8, duration: 2000 });
+    mapRef.current.flyTo({ center: [flyToLocation.lng, flyToLocation.lat], zoom: flyToLocation.zoom ?? 8, duration: 2000 });
   }, [mapReady, flyToLocation]);
 
   // Dynamic projection switching (lightweight — no terrain DEM)

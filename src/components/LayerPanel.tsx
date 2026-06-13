@@ -14,6 +14,7 @@ interface LayerPanelProps {
   activeLayers: any;
   setActiveLayers: React.Dispatch<React.SetStateAction<any>>;
   isMobile?: boolean;
+  density?: 'compact' | 'standard' | 'comfortable';
 }
 
 const LAYER_GROUPS = [
@@ -105,8 +106,10 @@ function Shield(props: any) {
   );
 }
 
-function LayerPanel({ data, activeLayers, setActiveLayers, isMobile }: LayerPanelProps) {
+function LayerPanel({ data, activeLayers, setActiveLayers, isMobile, density = 'standard' }: LayerPanelProps) {
   const [hoveredGroup, setHoveredGroup] = useState<string | null>(null);
+  const railGap = density === 'compact' ? 'gap-6' : density === 'comfortable' ? 'gap-10' : 'gap-8';
+  const menuPadding = density === 'comfortable' ? 'p-4' : 'p-3';
 
   const toggle = (key: string) => setActiveLayers((prev: any) => ({ ...prev, [key]: !prev[key] }));
   
@@ -181,12 +184,12 @@ function LayerPanel({ data, activeLayers, setActiveLayers, isMobile }: LayerPane
   }
 
   return (
-    <div className="absolute top-0 left-0 h-full w-[80px] border-r border-white/5 flex flex-col pt-32 pb-8 z-50 pointer-events-auto bg-black/20 backdrop-blur-[2px]">
-      <div className="absolute left-2 right-2 top-20">
+    <div className="absolute top-0 left-0 h-full w-[96px] border-r border-white/5 flex flex-col pt-48 pb-8 z-50 pointer-events-auto bg-black/25 backdrop-blur-[3px]">
+      <div className="absolute left-2 right-2 top-20 border-b border-white/10 pb-4">
         <FeedViewHotkeys activeLayers={activeLayers} setActiveLayers={setActiveLayers} compact />
       </div>
       
-      <div className="flex-1 flex flex-col gap-8 px-2">
+      <div className={`flex-1 flex flex-col ${railGap} px-2`}>
         {LAYER_GROUPS.map((group) => {
           const groupActiveCount = group.layers.filter(l => activeLayers[l.key]).length;
           const isActive = groupActiveCount > 0;
@@ -201,7 +204,7 @@ function LayerPanel({ data, activeLayers, setActiveLayers, isMobile }: LayerPane
             >
               {/* The Vertical Label */}
               <div 
-                className={`text-[10px] font-mono font-bold cursor-pointer select-none transition-all duration-300 flex items-center justify-center`}
+                className={`text-[11px] font-mono font-bold cursor-pointer select-none transition-all duration-300 flex items-center justify-center`}
                 style={{
                   writingMode: 'horizontal-tb',
                   color: isActive ? group.color : 'rgba(255, 255, 255, 0.4)',
@@ -228,7 +231,7 @@ function LayerPanel({ data, activeLayers, setActiveLayers, isMobile }: LayerPane
                     animate={{ opacity: 1, x: 0, filter: 'blur(0px)' }}
                     exit={{ opacity: 0, x: -5, filter: 'blur(2px)' }}
                     transition={{ duration: 0.2, ease: "easeOut" }}
-                    className="absolute left-[70px] top-1/2 -translate-y-1/2 min-w-[240px] bg-black/80 backdrop-blur-md border border-white/10 rounded-lg p-3 shadow-2xl z-50 pointer-events-auto"
+                    className={`absolute left-[86px] top-1/2 -translate-y-1/2 min-w-[260px] bg-black/85 backdrop-blur-md border border-white/10 rounded-lg ${menuPadding} shadow-2xl z-50 pointer-events-auto`}
                     style={{
                       boxShadow: `0 0 30px ${group.color}15, inset 0 0 20px ${group.color}05`
                     }}
@@ -252,7 +255,7 @@ function LayerPanel({ data, activeLayers, setActiveLayers, isMobile }: LayerPane
                                 toggle(layer.key);
                               }
                             }}
-                            className="w-full flex items-center gap-3 px-2 py-1.5 rounded bg-transparent hover:bg-white/5 transition-colors group"
+                    className="w-full flex items-center gap-3 px-2.5 py-2 rounded bg-transparent hover:bg-white/5 transition-colors group"
                           >
                             <div 
                               className={`w-2 h-2 rounded-full border flex-shrink-0 transition-all duration-300 ${isLayerActive ? 'bg-current border-current scale-100' : 'bg-transparent border-white/30 scale-75'}`}
