@@ -7,6 +7,7 @@ import {
   CloudLightning, Radiation, Tv, Anchor, Ship, Newspaper,
   Network, Share2, Radio
 } from 'lucide-react';
+import FeedViewHotkeys from './FeedViewHotkeys';
 
 interface LayerPanelProps {
   data: any;
@@ -125,6 +126,7 @@ function LayerPanel({ data, activeLayers, setActiveLayers, isMobile }: LayerPane
   if (isMobile) {
     return (
       <div className="flex flex-col gap-4 py-2">
+        <FeedViewHotkeys activeLayers={activeLayers} setActiveLayers={setActiveLayers} />
         {LAYER_GROUPS.map((group) => (
           <div key={group.label} className="flex flex-col gap-2">
             <div 
@@ -180,6 +182,9 @@ function LayerPanel({ data, activeLayers, setActiveLayers, isMobile }: LayerPane
 
   return (
     <div className="absolute top-0 left-0 h-full w-[80px] border-r border-white/5 flex flex-col pt-32 pb-8 z-50 pointer-events-auto bg-black/20 backdrop-blur-[2px]">
+      <div className="absolute left-2 right-2 top-20">
+        <FeedViewHotkeys activeLayers={activeLayers} setActiveLayers={setActiveLayers} compact />
+      </div>
       
       <div className="flex-1 flex flex-col gap-8 px-2">
         {LAYER_GROUPS.map((group) => {
