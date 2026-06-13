@@ -23,6 +23,9 @@ export function parseRdbStations(rdbText, state) {
   const stations = [];
 
   for (let i = 1; i < lines.length; i++) {
+    // Skip the width-specifier line (second line in RDB format: "5s\t15s\t50s\t...")
+    if (i === 1 && lines[i].match(/^\d+[a-z]\t/)) continue;
+
     const values = lines[i].split('\t');
     if (values.length < headers.length) continue;
 
