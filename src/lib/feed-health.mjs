@@ -19,6 +19,8 @@ export const FEED_DEFINITIONS = [
   { key: 'cyber_cve', label: 'Cyber / CVE', dataKeys: ['cyber_cve'], layerKey: 'cyber_cve', staleAfterMs: 60 * 60_000 },
   { key: 'ics_advisories', label: 'CISA ICS Advisories', dataKeys: ['ics_advisories'], layerKey: 'ics_advisories', staleAfterMs: 7 * 24 * 60 * 60_000 },
   { key: 'nrc_events', label: 'NRC Events', dataKeys: ['nrc_events'], layerKey: 'nrc_events', staleAfterMs: 7 * 24 * 60 * 60_000 },
+  { key: 'usgs_gauges', label: 'USGS Stream Gauges', dataKeys: ['usgs_gauges'], layerKey: 'usgs_gauges', staleAfterMs: 4 * 60 * 60_000 },
+  { key: 'fema_disasters', label: 'FEMA Disasters', dataKeys: ['fema_disasters'], layerKey: 'fema_disasters', staleAfterMs: 24 * 60 * 60_000 },
   { key: 'openmhz', label: 'OpenMHz / P25', dataKeys: ['openmhz'], layerKey: 'openmhz', staleAfterMs: 6 * 60 * 60_000 },
 ];
 
@@ -76,6 +78,8 @@ function feedKeyFromProbePath(path) {
   if (segment === 'storm-reports') return 'storm_reports';
   if (segment === 'ics-advisories') return 'ics_advisories';
   if (segment === 'nrc-events') return 'nrc_events';
+  if (segment === 'usgs-gauges') return 'usgs_gauges';
+  if (segment === 'fema-disasters') return 'fema_disasters';
   if (segment === 'cyber-cve') return 'cyber_cve';
   if (segment === 'openmhz') return 'openmhz';
   return segment.replace(/-/g, '_');
