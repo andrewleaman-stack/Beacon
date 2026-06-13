@@ -18,6 +18,7 @@
     "test:fema-disasters": "node --test scripts/fema-disasters.test.mjs",
     "test:tsunami": "node --test scripts/nws-tsunami.test.mjs",
     "test:expanded-feeds": "node --test scripts/expanded-feeds.test.mjs",
+    "test:transport-cable-feeds": "node --test scripts/transport-cable-feeds.test.mjs",
     "typecheck": "tsc --noEmit",
     "smoke": "node scripts/smoke.mjs",
     "db:push": "prisma db push",

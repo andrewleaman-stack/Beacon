@@ -24,6 +24,9 @@ export const FEED_DEFINITIONS = [
   { key: 'volcano_alerts', label: 'USGS Volcano Alerts', dataKeys: ['volcano_alerts'], layerKey: 'volcano_alerts', staleAfterMs: 4 * 60 * 60_000 },
   { key: 'epa_echo', label: 'EPA ECHO Facilities', dataKeys: ['epa_echo'], layerKey: 'epa_echo', staleAfterMs: 7 * 24 * 60 * 60_000 },
   { key: 'power_outages', label: 'Power Outages', dataKeys: ['power_outages'], layerKey: 'power_outages', staleAfterMs: 60 * 60_000 },
+  { key: 'phmsa_incidents', label: 'PHMSA Pipeline Incidents', dataKeys: ['phmsa_incidents'], layerKey: 'phmsa_incidents', staleAfterMs: 7 * 24 * 60 * 60_000 },
+  { key: 'fra_rail_incidents', label: 'FRA Rail Incidents', dataKeys: ['fra_rail_incidents'], layerKey: 'fra_rail_incidents', staleAfterMs: 7 * 24 * 60 * 60_000 },
+  { key: 'submarine_cable_faults', label: 'Submarine Cable Faults', dataKeys: ['submarine_cable_faults'], layerKey: 'submarine_cable_faults', staleAfterMs: 24 * 60 * 60_000 },
   { key: 'fema_disasters', label: 'FEMA Disasters', dataKeys: ['fema_disasters'], layerKey: 'fema_disasters', staleAfterMs: 24 * 60 * 60_000 },
   { key: 'openmhz', label: 'OpenMHz / P25', dataKeys: ['openmhz'], layerKey: 'openmhz', staleAfterMs: 6 * 60 * 60_000 },
 ];
@@ -87,6 +90,9 @@ function feedKeyFromProbePath(path) {
   if (segment === 'volcano-alerts') return 'volcano_alerts';
   if (segment === 'epa-echo') return 'epa_echo';
   if (segment === 'power-outages') return 'power_outages';
+  if (segment === 'phmsa-incidents') return 'phmsa_incidents';
+  if (segment === 'fra-rail-incidents') return 'fra_rail_incidents';
+  if (segment === 'submarine-cable-faults') return 'submarine_cable_faults';
   if (segment === 'fema-disasters') return 'fema_disasters';
   if (segment === 'cyber-cve') return 'cyber_cve';
   if (segment === 'openmhz') return 'openmhz';

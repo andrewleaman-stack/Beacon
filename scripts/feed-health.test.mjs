@@ -39,11 +39,11 @@ test('buildFeedHealthSnapshot summarizes current BEACON cache state', () => {
   });
 
   assert.equal(snapshot.platform, 'BEACON');
-  assert.equal(snapshot.summary.totalFeeds, 23);
+  assert.equal(snapshot.summary.totalFeeds, 26);
   assert.equal(snapshot.summary.healthy, 2);
   assert.equal(snapshot.summary.offline, 1);
   assert.equal(snapshot.summary.stale, 1);
-  assert.equal(snapshot.summary.idle, 19);
+  assert.equal(snapshot.summary.idle, 22);
   assert.equal(snapshot.summary.activeFeeds, 4);
   assert.equal(snapshot.status, 'degraded');
 
@@ -65,6 +65,9 @@ test('buildFeedHealthSnapshot summarizes current BEACON cache state', () => {
   assert.equal(byKey.volcano_alerts.status, 'idle');
   assert.equal(byKey.epa_echo.status, 'idle');
   assert.equal(byKey.power_outages.status, 'idle');
+  assert.equal(byKey.phmsa_incidents.status, 'idle');
+  assert.equal(byKey.fra_rail_incidents.status, 'idle');
+  assert.equal(byKey.submarine_cable_faults.status, 'idle');
   assert.equal(byKey.fema_disasters.status, 'idle');
   assert.equal(byKey.openmhz.status, 'idle');
 });
