@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 
 import { normalizePhmsaIncident } from '../src/lib/phmsa-incidents.mjs';
 import { normalizeFraRailIncident } from '../src/lib/fra-rail-incidents.mjs';
-import { normalizeSubmarineCableFault } from '../src/lib/submarine-cable-faults.mjs';
+import { normalizeCableDownOutage, normalizeSubmarineCableFault } from '../src/lib/submarine-cable-faults.mjs';
 
 test('normalizePhmsaIncident maps DOT/PHMSA incident rows', () => {
   const incident = normalizePhmsaIncident({
@@ -64,4 +64,26 @@ test('normalizeSubmarineCableFault extracts cable names and severity from GDELT 
   assert.deepEqual(fault.cables, ['AAE-1', 'SEAMEWE-5']);
   assert.equal(fault.severity, 'high');
   assert.equal(fault.url, 'https://example.com/cable-cut');
+});
+
+test('normalizeCableDownOutage maps active outage tracker records', () => {
+  const fault = normalizeCableDownOutage({
+    segmentId: 180026,
+    segmentName: 'AU-Aleutian — Trunk',
+    cableId: 90029,
+    cableName: 'AU-Aleutian',
+    status: 'down',
+    statusSince: '2026-05-27T00:00:00.000Z',
+    expectedRecovery: '2026-06-10T00:00:00.000Z',
+    affectedCapacityPercent: 100,
+    cause: 'equipment_failure',
+    faultLocationDescription: 'Subsea fiber cable break near Chignik Bay, Alaska.',
+  });
+
+  assert.equal(fault.id, 'submarine-cable-cabledown-180026');
+  assert.equal(fault.status, 'down');
+  assert.equal(fault.cableName, 'AU-Aleutian');
+  assert.deepEqual(fault.cables, ['AU-Aleutian']);
+  assert.equal(fault.severity, 'high');
+  assert.equal(fault.source, 'SubseaDown active outage tracker');
 });
