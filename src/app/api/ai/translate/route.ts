@@ -2,7 +2,7 @@
  * ════════════════════════════════════════════════════════════════
  *  BEACON — AI Translation Endpoint
  *  POST /api/ai/translate
- *  Translates text to English using OpenRouter (Nemotron 3.5) with fallback
+ *  Translates text to English using OpenRouter
  * ════════════════════════════════════════════════════════════════
  */
 

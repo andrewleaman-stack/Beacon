@@ -23,7 +23,7 @@ import type { IntelligenceContext } from '@/lib/ai-engine';
 /* ═══════════════════════════════════════════════════════════════
    BEACON — AI Intelligence Analyst Panel
    Premium glass-panel chat interface for real-time intelligence
-   analysis powered by Gemini 2.0 Flash
+   analysis powered by OpenRouter
    ═══════════════════════════════════════════════════════════════ */
 
 /* ─────────────────────────────────────────────────────────────
@@ -201,7 +201,7 @@ export default function AiAnalyst({ data }: AiAnalystProps) {
 
   // Load saved key on mount
   useEffect(() => {
-    const saved = localStorage.getItem('beacon-gemini-key');
+    const saved = localStorage.getItem('beacon-openrouter-key');
     if (saved) {
       setApiKeyInput(saved);
       setKeySaved(true);
@@ -222,9 +222,9 @@ export default function AiAnalyst({ data }: AiAnalystProps) {
 
   const getHeaders = useCallback((): Record<string, string> => {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    const savedKey = localStorage.getItem('beacon-gemini-key');
+    const savedKey = localStorage.getItem('beacon-openrouter-key');
     if (savedKey) {
-      headers['x-gemini-key'] = savedKey;
+      headers['x-openrouter-key'] = savedKey;
     }
     return headers;
   }, []);
@@ -346,14 +346,14 @@ export default function AiAnalyst({ data }: AiAnalystProps) {
   const saveApiKey = useCallback(() => {
     const key = apiKeyInput.trim();
     if (key) {
-      localStorage.setItem('beacon-gemini-key', key);
+      localStorage.setItem('beacon-openrouter-key', key);
       setKeySaved(true);
       setTimeout(() => setShowSettings(false), 600);
     }
   }, [apiKeyInput]);
 
   const clearApiKey = useCallback(() => {
-    localStorage.removeItem('beacon-gemini-key');
+    localStorage.removeItem('beacon-openrouter-key');
     setApiKeyInput('');
     setKeySaved(false);
   }, []);
@@ -450,7 +450,7 @@ export default function AiAnalyst({ data }: AiAnalystProps) {
                   <div className="flex flex-col">
                     <span className="hud-text text-[11px] text-[var(--text-heading)]">BEACON ANALYST</span>
                     <span className="text-[7px] font-mono tracking-[0.2em] text-[var(--text-muted)]">
-                      GEMINI 2.0 FLASH • ONLINE
+                      OPENROUTER • ONLINE
                     </span>
                   </div>
                 </div>
@@ -506,7 +506,7 @@ export default function AiAnalyst({ data }: AiAnalystProps) {
                       <div className="flex items-center gap-2">
                         <Key className="w-3 h-3 text-[var(--gold-dim)]" />
                         <span className="hud-label" style={{ fontSize: '8px' }}>
-                          GEMINI API KEY (OPTIONAL)
+                          OPENROUTER API KEY (OPTIONAL)
                         </span>
                       </div>
                       <div className="flex gap-2">
@@ -517,7 +517,7 @@ export default function AiAnalyst({ data }: AiAnalystProps) {
                             setApiKeyInput(e.target.value);
                             setKeySaved(false);
                           }}
-                          placeholder="AIza..."
+                          placeholder="sk-or-v1-..."
                           className="flex-1 bg-[var(--bg-tertiary)] border border-[var(--border-secondary)] rounded-lg px-3 py-2 text-[11px] font-mono text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--gold-dim)] transition-colors"
                         />
                         {apiKeyInput.trim() && (
@@ -549,12 +549,12 @@ export default function AiAnalyst({ data }: AiAnalystProps) {
                       <p className="text-[8px] font-mono text-[var(--text-muted)] leading-relaxed">
                         Your key is stored locally and sent only to the BEACON server. Get a free key at{' '}
                         <a
-                          href="https://aistudio.google.com/apikey"
+                          href="https://openrouter.ai/keys"
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-[var(--cyan-primary)] hover:underline"
                         >
-                          aistudio.google.com
+                          openrouter.ai
                         </a>
                       </p>
                     </div>

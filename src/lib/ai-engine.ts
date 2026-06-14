@@ -1,12 +1,11 @@
 /**
  * ════════════════════════════════════════════════════════════════
  *  BEACON — AI Intelligence Engine
- *  OpenRouter primary (Nemotron 3.5 Content Safety) with Gemini fallback
+ *  OpenRouter-only intelligence generation
  *  Designed to correlate multi-domain feeds into actionable briefings
  * ════════════════════════════════════════════════════════════════
  */
 
-import { GoogleGenerativeAI, type GenerativeModel } from '@google/generative-ai';
 
 /* ─────────────────────────────────────────────────────────────
    Data Interfaces — Zero `any` types
@@ -174,29 +173,6 @@ Focus on operational, tactical, and security implications:
 const BRIEFING_PROMPT_BASE = `You are BEACON Intelligence Analyst generating a daily intelligence briefing. Provide actionable intelligence assessments with clear structure and confidence levels.`;
 
 /* ─────────────────────────────────────────────────────────────
-   Client Factory
-   ───────────────────────────────────────────────────────────── */
-
-export function createGeminiClient(apiKey: string): GoogleGenerativeAI {
-  return new GoogleGenerativeAI(apiKey);
-}
-
-/* ─────────────────────────────────────────────────────────────
-   API Key Rotation — Round-robin through available keys
-   ───────────────────────────────────────────────────────────── */
-
-let _geminiKeyIndex = 0;
-
-export function rotateGeminiApiKey(keys: string[]): string {
-  if (keys.length === 0) {
-    throw new Error('No Gemini API keys available');
-  }
-  const key = keys[_geminiKeyIndex % keys.length];
-  _geminiKeyIndex = (_geminiKeyIndex + 1) % keys.length;
-  return key;
-}
-
-/* ─────────────────────────────────────────────────────────────
    Context Serializer — Compact representation for token efficiency
    ───────────────────────────────────────────────────────────── */
 
@@ -301,86 +277,40 @@ async function callOpenRouter(request: OpenRouterRequest): Promise<OpenRouterRes
 }
 
 /* ─────────────────────────────────────────────────────────────
-   Translation Helper
+   Translation Helper (OpenRouter only)
    ───────────────────────────────────────────────────────────── */
 
 export async function translateToEnglish(text: string, sourceLang?: string): Promise<string> {
-  // Try OpenRouter first (primary)
-  let openRouterError: Error | null = null;
-  try {
-    const apiKey = process.env.OPENROUTER_API_KEY;
-    if (apiKey) {
-      const systemPrompt = `You are a professional translator. Translate the following text to English. Preserve technical terms, proper nouns, and numerical data. If the text is already in English, return it unchanged.`;
-      
-      const userContent = sourceLang 
-        ? `Translate from ${sourceLang} to English:\n\n${text}`
-        : `Detect language and translate to English if needed:\n\n${text}`;
+  const systemPrompt = `You are a professional translator. Translate the following text to English. Preserve technical terms, proper nouns, and numerical data. If the text is already in English, return it unchanged.`;
 
-      const messages: OpenRouterMessage[] = [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userContent },
-      ];
+  const userContent = sourceLang
+    ? `Translate from ${sourceLang} to English:
 
-      const request: OpenRouterRequest = {
-        model: 'nvidia/nemotron-3.5-22b-instruct:free',
-        messages,
-        temperature: 0.1, // Low temperature for consistent translation
-        max_tokens: 4000,
-      };
+${text}`
+    : `Detect language and translate to English if needed:
 
-      const response = await callOpenRouter(request);
-      const translated = response.choices[0]?.message?.content?.trim();
-      
-      if (translated) {
-        return translated;
-      }
-      
-      throw new Error('Empty translation response');
-    }
-  } catch (err) {
-    openRouterError = err instanceof Error ? err : new Error(String(err));
-    console.warn('[BEACON AI] OpenRouter translation failed, trying Gemini fallback:', openRouterError);
+${text}`;
+
+  const response = await callOpenRouter({
+    model: 'nvidia/nemotron-3.5-22b-instruct:free',
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userContent },
+    ],
+    temperature: 0.1,
+    max_tokens: 4000,
+  });
+
+  const translated = response.choices[0]?.message?.content?.trim();
+  if (!translated) {
+    throw new Error('Translation failed: OpenRouter returned an empty response');
   }
 
-  // Fallback to Gemini
-  try {
-    const geminiKeys: string[] = [];
-    for (let i = 1; i <= 8; i++) {
-      const key = process.env[`GEMINI_API_KEY_${i}`];
-      if (key && key.trim().length > 0) {
-        geminiKeys.push(key.trim());
-      }
-    }
-
-    if (geminiKeys.length === 0) {
-      throw new Error('No Gemini API keys configured for translation fallback');
-    }
-
-    const apiKey = rotateGeminiApiKey(geminiKeys);
-    const client = createGeminiClient(apiKey);
-    const model: GenerativeModel = client.getGenerativeModel({
-      model: 'gemini-2.0-flash',
-      systemInstruction: `You are a professional translator. Translate the following text to English. Preserve technical terms, proper nouns, and numerical data. If the text is already in English, return it unchanged.`,
-    });
-
-    const userContent = sourceLang 
-      ? `Translate from ${sourceLang} to English:\n\n${text}`
-      : `Detect language and translate to English if needed:\n\n${text}`;
-
-    const result = await model.generateContent(userContent);
-    const response = result.response;
-    return response.text();
-  } catch (geminiError) {
-    const typedGeminiError = geminiError instanceof Error ? geminiError : new Error(String(geminiError));
-    console.error('[BEACON AI] Both OpenRouter and Gemini translation failed:', typedGeminiError);
-    throw new Error(
-      `Translation failed. OpenRouter error: ${openRouterError?.message ?? 'unknown'}. Gemini error: ${typedGeminiError.message ?? 'unknown'}`
-    );
-  }
+  return translated;
 }
 
 /* ─────────────────────────────────────────────────────────────
-   Intelligence Analysis (OpenRouter primary, Gemini fallback)
+   Intelligence Analysis (OpenRouter only)
    ───────────────────────────────────────────────────────────── */
 
 export async function analyzeIntelligence(
@@ -388,146 +318,67 @@ export async function analyzeIntelligence(
   userQuery: string,
   role: BriefingRole = 'general'
 ): Promise<string> {
-  // Try OpenRouter first (primary)
-  let openRouterError: Error | null = null;
-  try {
-    const apiKey = process.env.OPENROUTER_API_KEY;
-    if (apiKey) {
-      const systemPrompt = ROLE_PROMPTS[role];
-      const contextData = serializeContext(context);
+  const systemPrompt = `${SYSTEM_PROMPT}
 
-      const messages: OpenRouterMessage[] = [
-        { role: 'system', content: systemPrompt },
-        {
-          role: 'user',
-          content: `## CURRENT OPERATIONAL DATA\n${contextData}\n\n## ANALYST QUERY\n${userQuery}\n\nProvide your intelligence assessment based on the operational data above and the analyst's query.`,
-        },
-      ];
+${ROLE_PROMPTS[role]}`;
+  const contextData = serializeContext(context);
 
-      const request: OpenRouterRequest = {
-        model: 'nvidia/nemotron-3.5-22b-instruct:free', // Primary: Nemotron 3.5 Content Safety (free)
-        messages,
-        temperature: 0.2,
-        max_tokens: 2000,
-      };
+  const response = await callOpenRouter({
+    model: 'nvidia/nemotron-3.5-22b-instruct:free',
+    messages: [
+      { role: 'system', content: systemPrompt },
+      {
+        role: 'user',
+        content: `## CURRENT OPERATIONAL DATA
+${contextData}
 
-      const response = await callOpenRouter(request);
-      return response.choices[0]?.message?.content?.trim() ?? 'No analysis generated';
-    }
-  } catch (err) {
-    openRouterError = err instanceof Error ? err : new Error(String(err));
-    console.warn('[BEACON AI] OpenRouter failed, trying Gemini fallback:', openRouterError);
-  }
+## ANALYST QUERY
+${userQuery}
 
-  // Fallback to Gemini
-  try {
-    const geminiKeys: string[] = [];
-    for (let i = 1; i <= 8; i++) {
-      const key = process.env[`GEMINI_API_KEY_${i}`];
-      if (key && key.trim().length > 0) {
-        geminiKeys.push(key.trim());
-      }
-    }
+Provide your intelligence assessment based on the operational data above and the analyst's query.`,
+      },
+    ],
+    temperature: 0.2,
+    max_tokens: 2000,
+  });
 
-    if (geminiKeys.length === 0) {
-      throw new Error('No Gemini API keys configured for fallback');
-    }
-
-    const apiKey = rotateGeminiApiKey(geminiKeys);
-    const client = createGeminiClient(apiKey);
-    const model: GenerativeModel = client.getGenerativeModel({
-      model: 'gemini-2.0-flash',
-      systemInstruction: `${SYSTEM_PROMPT}\n\nROLE SPECIALIZATION: ${ROLE_PROMPTS[role]}`,
-    });
-
-    const contextData = serializeContext(context);
-    const prompt = `## CURRENT OPERATIONAL DATA\n${contextData}\n\n## ANALYST QUERY\n${userQuery}\n\nProvide your intelligence assessment based on the operational data above and the analyst's query.`;
-
-    const result = await model.generateContent(prompt);
-    const response = result.response;
-    return response.text();
-  } catch (geminiError) {
-    const typedGeminiError = geminiError instanceof Error ? geminiError : new Error(String(geminiError));
-    console.error('[BEACON AI] Both OpenRouter and Gemini failed:', typedGeminiError);
-    throw new Error(
-      `Intelligence analysis failed. OpenRouter error: ${openRouterError?.message ?? 'unknown'}. Gemini error: ${typedGeminiError.message ?? 'unknown'}`
-    );
-  }
+  return response.choices[0]?.message?.content?.trim() ?? 'No analysis generated';
 }
 
 /* ─────────────────────────────────────────────────────────────
-   Daily Briefing Generation (OpenRouter primary, Gemini fallback)
+   Daily Briefing Generation (OpenRouter only)
    ───────────────────────────────────────────────────────────── */
 
 export async function generateBriefing(
   context: IntelligenceContext,
   role: BriefingRole = 'general'
 ): Promise<string> {
-  // Try OpenRouter first (primary)
-  let openRouterError: Error | null = null;
-  try {
-    const apiKey = process.env.OPENROUTER_API_KEY;
-    if (apiKey) {
-      const systemPrompt = ROLE_PROMPTS[role];
-      const contextData = serializeContext(context);
+  const systemPrompt = `${SYSTEM_PROMPT}
 
-      const messages: OpenRouterMessage[] = [
-        { role: 'system', content: systemPrompt },
-        {
-          role: 'user',
-          content: `${BRIEFING_PROMPT_BASE}\n\n## CURRENT OPERATIONAL DATA\n${contextData}\n\nGenerate the briefing now.`,
-        },
-      ];
+${ROLE_PROMPTS[role]}`;
+  const contextData = serializeContext(context);
 
-      const request: OpenRouterRequest = {
-        model: 'nvidia/nemotron-3.5-22b-instruct:free', // Primary: Nemotron 3.5 Content Safety (free)
-        messages,
-        temperature: 0.3, // Slightly higher for briefing creativity
-        max_tokens: 3000,
-      };
+  const response = await callOpenRouter({
+    model: 'nvidia/nemotron-3.5-22b-instruct:free',
+    messages: [
+      { role: 'system', content: systemPrompt },
+      {
+        role: 'user',
+        content: `${BRIEFING_PROMPT_BASE}
 
-      const response = await callOpenRouter(request);
-      return response.choices[0]?.message?.content?.trim() ?? 'No briefing generated';
-    }
-  } catch (err) {
-    openRouterError = err instanceof Error ? err : new Error(String(err));
-    console.warn('[BEACON AI] OpenRouter briefing failed, trying Gemini fallback:', openRouterError);
-  }
+${BRIEFING_PROMPT}
 
-  // Fallback to Gemini
-  try {
-    const geminiKeys: string[] = [];
-    for (let i = 1; i <= 8; i++) {
-      const key = process.env[`GEMINI_API_KEY_${i}`];
-      if (key && key.trim().length > 0) {
-        geminiKeys.push(key.trim());
-      }
-    }
+## CURRENT OPERATIONAL DATA
+${contextData}
 
-    if (geminiKeys.length === 0) {
-      throw new Error('No Gemini API keys configured for fallback');
-    }
+Generate the briefing now.`,
+      },
+    ],
+    temperature: 0.3,
+    max_tokens: 3000,
+  });
 
-    const apiKey = rotateGeminiApiKey(geminiKeys);
-    const client = createGeminiClient(apiKey);
-    const model: GenerativeModel = client.getGenerativeModel({
-      model: 'gemini-2.0-flash',
-      systemInstruction: `${SYSTEM_PROMPT}\n\nROLE SPECIALIZATION: ${ROLE_PROMPTS[role]}`,
-    });
-
-    const contextData = serializeContext(context);
-    const prompt = `${BRIEFING_PROMPT_BASE}\n\n## CURRENT OPERATIONAL DATA\n${contextData}\n\nGenerate the briefing now.`;
-
-    const result = await model.generateContent(prompt);
-    const response = result.response;
-    return response.text();
-  } catch (geminiError) {
-    const typedGeminiError = geminiError instanceof Error ? geminiError : new Error(String(geminiError));
-    console.error('[BEACON AI] Both OpenRouter and Gemini briefing failed:', typedGeminiError);
-    throw new Error(
-      `Briefing generation failed. OpenRouter error: ${openRouterError?.message ?? 'unknown'}. Gemini error: ${typedGeminiError.message ?? 'unknown'}`
-    );
-  }
+  return response.choices[0]?.message?.content?.trim() ?? 'No briefing generated';
 }
 
 /* ─────────────────────────────────────────────────────────────

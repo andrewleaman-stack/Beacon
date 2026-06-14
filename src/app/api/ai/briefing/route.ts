@@ -2,15 +2,13 @@
  * ════════════════════════════════════════════════════════════════
  *  BEACON — AI Intelligence Briefing Endpoint
  *  POST /api/ai/briefing
- *  Generates structured threat briefings via OpenRouter (primary) / Gemini (fallback)
+ *  Generates structured threat briefings via OpenRouter
  *  Supports role-based briefings and automatic translation
  * ════════════════════════════════════════════════════════════════
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import {
-  createGeminiClient,
-  rotateGeminiApiKey,
   generateBriefing,
   translateToEnglish,
   type IntelligenceContext,
@@ -58,21 +56,6 @@ setInterval(() => {
     }
   }
 }, 120_000);
-
-/* ─────────────────────────────────────────────────────────────
-   Environment Key Collection (for fallback)
-   ───────────────────────────────────────────────────────────── */
-
-function getEnvApiKeys(): string[] {
-  const keys: string[] = [];
-  for (let i = 1; i <= 8; i++) {
-    const key = process.env[`GEMINI_API_KEY_${i}`];
-    if (key && key.trim().length > 0) {
-      keys.push(key.trim());
-    }
-  }
-  return keys;
-}
 
 /* ─────────────────────────────────────────────────────────────
    Request / Response types
@@ -251,7 +234,7 @@ export async function POST(
   }
 
   try {
-    // Generate briefing using the AI engine (OpenRouter primary, Gemini fallback)
+    // Generate briefing using the OpenRouter-only AI engine
     const briefing = await generateBriefing(processedContext, role);
 
     return NextResponse.json(
@@ -274,11 +257,11 @@ export async function POST(
     console.error('[BEACON AI] Briefing error:', message);
 
     // Check for specific error types from our AI engine
-    if (message.includes('OPENROUTER_API_KEY') || message.includes('No Gemini API keys')) {
+    if (message.includes('OPENROUTER_API_KEY')) {
       return NextResponse.json(
         {
-          error: 'AI service not configured. Please set OPENROUTER_API_KEY or GEMINI_API_KEY_1.',
-          code: 'NO_AI_KEY',
+          error: 'AI service not configured. Please set OPENROUTER_API_KEY.',
+          code: 'NO_OPENROUTER_KEY',
         },
         { status: 503 }
       );

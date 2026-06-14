@@ -380,7 +380,7 @@ ${entity.properties ? Object.entries(entity.properties).map(([k, v]) => `${k}: $
           <li>Only BEACON feed data as source material</li>
           <li>Explicit confidence &amp; uncertainty markers</li>
           <li>Citations linked to source records</li>
-          <li>OpenRouter primary (Nemotron 3.5), Gemini fallback</li>
+          <li>OpenRouter-only AI generation</li>
           <li>Role-based analysis: {role.charAt(0).toUpperCase() + role.slice(1)}</li>
           <li>{translateNonEnglish ? 'Auto-translation enabled' : 'Auto-translation disabled'}</li>
           <li>No external knowledge injection</li>
