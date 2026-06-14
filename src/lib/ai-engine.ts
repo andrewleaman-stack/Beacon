@@ -68,6 +68,8 @@ export interface IntelligenceContext {
   timestamp: string;
 }
 
+export type BriefingMode = 'highlights' | 'full';
+
 /* ─────────────────────────────────────────────────────────────
    System Prompt — Palantir-grade analyst persona
    ───────────────────────────────────────────────────────────── */
@@ -172,6 +174,17 @@ Focus on operational, tactical, and security implications:
 
 const BRIEFING_PROMPT_BASE = `You are BEACON Intelligence Analyst generating a daily intelligence briefing. Provide actionable intelligence assessments with clear structure and confidence levels.`;
 
+const HIGHLIGHTS_BRIEFING_PROMPT = `Generate a short BEACON Hotspots Brief, not a full world report.
+
+Output requirements:
+- Keep it concise: 3-6 bullets plus a one-sentence BLUF.
+- Focus only on hotspots that matter right now based on provided feed data.
+- Prioritize escalation, public-safety relevance, operational disruption, cyber exposure, and compound risk.
+- Include source references inline using available source names and URLs/links when provided.
+- If an item is low confidence or feed coverage is thin, say so plainly.
+- Do not pad with regions that have no meaningful signal.
+- End with a short "WATCH NEXT" line listing what would change the assessment.`;
+
 /* ─────────────────────────────────────────────────────────────
    Context Serializer — Compact representation for token efficiency
    ───────────────────────────────────────────────────────────── */
@@ -197,7 +210,7 @@ function serializeContext(context: IntelligenceContext): string {
     for (const item of context.news.slice(0, 15)) {
       const coords = item.coords ? ` | GEO:${item.coords[0].toFixed(2)},${item.coords[1].toFixed(2)}` : '';
       sections.push(
-        `  RISK:${item.risk_score}/10 | ${item.source} | ${item.title}${coords} | ${item.published}`
+        `  RISK:${item.risk_score}/10 | ${item.source} | ${item.title}${coords} | ${item.published} | SRC:${item.link}`
       );
     }
   }
@@ -351,12 +364,14 @@ Provide your intelligence assessment based on the operational data above and the
 
 export async function generateBriefing(
   context: IntelligenceContext,
-  role: BriefingRole = 'general'
+  role: BriefingRole = 'general',
+  mode: BriefingMode = 'highlights'
 ): Promise<string> {
   const systemPrompt = `${SYSTEM_PROMPT}
 
 ${ROLE_PROMPTS[role]}`;
   const contextData = serializeContext(context);
+  const briefingPrompt = mode === 'full' ? BRIEFING_PROMPT : HIGHLIGHTS_BRIEFING_PROMPT;
 
   const response = await callOpenRouter({
     model: 'nvidia/nemotron-3-super-120b-a12b:free',
@@ -366,7 +381,7 @@ ${ROLE_PROMPTS[role]}`;
         role: 'user',
         content: `${BRIEFING_PROMPT_BASE}
 
-${BRIEFING_PROMPT}
+${briefingPrompt}
 
 ## CURRENT OPERATIONAL DATA
 ${contextData}

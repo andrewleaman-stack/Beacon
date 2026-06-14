@@ -65,6 +65,7 @@ interface IntelligenceContext {
 }
 
 type BriefingRole = 'general' | 'chaplain' | 'police';
+type BriefingMode = 'highlights' | 'full';
 
 function beaconDataToIntelligenceContext(beaconData: Record<string, unknown>): IntelligenceContext {
   const earthquakes: IntelligenceContext['earthquakes'] = Array.isArray(beaconData.earthquakes) ? (beaconData.earthquakes as any[]).map((eq: any) => ({
@@ -134,6 +135,7 @@ export default function AIBriefingPanel({ entity, beaconData, onGenerateBrief }:
   const [error, setError] = useState<string | null>(null);
   const [role, setRole] = useState<BriefingRole>('general');
   const [translateNonEnglish, setTranslateNonEnglish] = useState(true);
+  const [briefingMode, setBriefingMode] = useState<BriefingMode>('highlights');
   const [isCopying, setIsCopying] = useState(false);
   const [isTranslating, setIsTranslating] = useState(false);
 
@@ -155,6 +157,7 @@ export default function AIBriefingPanel({ entity, beaconData, onGenerateBrief }:
           context: intelligenceContext,
           role,
           translateNonEnglish,
+          mode: briefingMode,
         }),
       });
 
@@ -171,7 +174,7 @@ export default function AIBriefingPanel({ entity, beaconData, onGenerateBrief }:
     } finally {
       setIsGenerating(false);
     }
-  }, [intelligenceContext, role, translateNonEnglish]);
+  }, [intelligenceContext, role, translateNonEnglish, briefingMode]);
 
   const handleCopyBrief = useCallback(async () => {
     if (!briefing) return;
@@ -200,6 +203,7 @@ export default function AIBriefingPanel({ entity, beaconData, onGenerateBrief }:
           context: intelligenceContext,
           role,
           translateNonEnglish: true,
+          mode: briefingMode,
         }),
       });
 
@@ -216,7 +220,7 @@ export default function AIBriefingPanel({ entity, beaconData, onGenerateBrief }:
     } finally {
       setIsTranslating(false);
     }
-  }, [briefing, intelligenceContext, role]);
+  }, [briefing, intelligenceContext, role, briefingMode]);
 
   const entityContext = entity ? `
 Type: ${entity.type}
@@ -238,7 +242,7 @@ ${entity.properties ? Object.entries(entity.properties).map(([k, v]) => `${k}: $
           <div className="w-8 h-8 rounded-lg bg-[var(--gold-primary)]/20 flex items-center justify-center">
             <Bot className="w-4 h-4 text-[var(--gold-primary)]" />
           </div>
-          <h3 className="text-sm font-mono font-bold text-white tracking-wider">AI BRIEFING</h3>
+          <h3 className="text-sm font-mono font-bold text-white tracking-wider">BEACON BRIEF</h3>
         </div>
         <span className="px-1.5 py-0.5 rounded text-[7px] font-mono text-[var(--gold-primary)] border border-[var(--gold-primary)]/30 bg-[var(--gold-primary)]/10">
           {isGenerating ? 'GENERATING' : briefing ? 'READY' : 'PLACEHOLDER'}
@@ -267,6 +271,22 @@ ${entity.properties ? Object.entries(entity.properties).map(([k, v]) => `${k}: $
         <div className="hud-label mb-2 flex items-center gap-1.5">
           <Shield className="w-3 h-3" />
           BRIEFING CONTROLS
+        </div>
+        <div className="grid grid-cols-2 gap-2 mb-3">
+          <button
+            type="button"
+            onClick={() => setBriefingMode('highlights')}
+            className={`px-3 py-2 rounded border font-mono text-[8px] tracking-wider transition-colors ${briefingMode === 'highlights' ? 'border-[var(--cyan-primary)]/50 bg-[var(--cyan-primary)]/15 text-[var(--cyan-primary)]' : 'border-white/10 bg-white/[0.03] text-white/50 hover:text-white'}`}
+          >
+            HOTSPOTS
+          </button>
+          <button
+            type="button"
+            onClick={() => setBriefingMode('full')}
+            className={`px-3 py-2 rounded border font-mono text-[8px] tracking-wider transition-colors ${briefingMode === 'full' ? 'border-[var(--gold-primary)]/50 bg-[var(--gold-primary)]/15 text-[var(--gold-primary)]' : 'border-white/10 bg-white/[0.03] text-white/50 hover:text-white'}`}
+          >
+            FULL REPORT
+          </button>
         </div>
         <div className="grid grid-cols-2 gap-2 mb-4">
           <div className="flex items-center gap-3">
@@ -319,7 +339,7 @@ ${entity.properties ? Object.entries(entity.properties).map(([k, v]) => `${k}: $
               </>
             ) : (
               <>
-                <Sparkles className="w-4 h-4" /> GENERATE BRIEF
+                <Sparkles className="w-4 h-4" /> {briefingMode === 'highlights' ? 'HOTSPOTS BRIEF' : 'FULL BRIEF'}
               </>
             )}
           </button>
@@ -360,13 +380,13 @@ ${entity.properties ? Object.entries(entity.properties).map(([k, v]) => `${k}: $
         <div className="mt-4 p-4 rounded border border-[var(--gold-primary)]/20 bg-[var(--gold-primary)]/5">
           <div className="hud-label mb-2 flex items-center gap-1.5">
             <Sparkles className="w-3 h-3" />
-            INTELLIGENCE BRIEFING
+            {briefingMode === 'highlights' ? 'HOTSPOTS BRIEF' : 'INTELLIGENCE BRIEFING'}
           </div>
           <div className="text-[9px] font-mono text-white/70 whitespace-pre-wrap">
             {briefing}
           </div>
           <div className="mt-2 text-[8px] text-white/50">
-            Role: {role.charAt(0).toUpperCase() + role.slice(1)} | Generated: {new Date().toLocaleTimeString(undefined, {hour: '2-digit', minute:'2-digit', second:'2-digit'})}
+            Mode: {briefingMode.toUpperCase()} | Role: {role.charAt(0).toUpperCase() + role.slice(1)} | Generated: {new Date().toLocaleTimeString(undefined, {hour: '2-digit', minute:'2-digit', second:'2-digit'})}
           </div>
         </div>
       )}

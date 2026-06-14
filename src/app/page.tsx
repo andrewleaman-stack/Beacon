@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Layers, BarChart3, Newspaper, Search, X, Globe, MapPinned, Radar, Satellite, Moon, ExternalLink, AlertTriangle, Activity, Database, Wifi, Play, Network, PanelLeft, Home, Settings2 } from 'lucide-react';
+import { Layers, BarChart3, Newspaper, Search, X, Globe, MapPinned, Radar, Satellite, Moon, ExternalLink, AlertTriangle, Activity, Database, Wifi, Play, Network, PanelLeft, Home, Settings2, Bot } from 'lucide-react';
 import IntelFeed from '@/components/IntelFeed';
 import MarketsPanel from '@/components/MarketsPanel';
 import ScmPanel from '@/components/ScmPanel';
@@ -17,6 +17,7 @@ import GlobalStatusBar from '@/components/GlobalStatusBar';
 import LiveAlerts from '@/components/LiveAlerts';
 import LowerDrawer from '@/components/LowerDrawer';
 import RightDrawer from '@/components/RightDrawer';
+import AIBriefingPanel from '@/components/AIBriefingPanel';
 import DashboardViewControls from '@/components/DashboardViewControls';
 import {
   DEFAULT_DASHBOARD_VIEW_SETTINGS,
@@ -115,6 +116,7 @@ export default function Dashboard() {
   const [showScmPanel, setShowScmPanel] = useState(true);
   const [showIntel, setShowIntel] = useState(false);
   const [showEntityGraph, setShowEntityGraph] = useState(false);
+  const [showAIBrief, setShowAIBrief] = useState(false);
   const [showLowerDrawer, setShowLowerDrawer] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [mobilePanel, setMobilePanel] = useState<'layers'|'markets'|'intel'|'search'|'recon'|null>(null);
@@ -997,7 +999,7 @@ export default function Dashboard() {
       {/* ── RIGHT TOOL STRIP (desktop only — mobile uses bottom nav) ── */}
       {!isMobile && <div className="absolute right-2 top-1/2 -translate-y-1/2 flex flex-col gap-2 z-[250] pointer-events-auto bg-black/40 backdrop-blur-sm p-1 rounded-full border border-white/5">
         <div className="relative group">
-          <button onClick={() => { setShowIntel(!showIntel); setShowMarkets(false); setShowAlerts(false); }} className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${showIntel ? 'bg-[var(--cyan-primary)]/20' : 'hover:bg-white/10'}`}>
+          <button onClick={() => { setShowIntel(!showIntel); setShowMarkets(false); setShowAlerts(false); setShowAIBrief(false); }} className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${showIntel ? 'bg-[var(--cyan-primary)]/20' : 'hover:bg-white/10'}`}>
             <Radar className={`w-4 h-4 ${showIntel ? 'text-[var(--cyan-primary)]' : 'text-white/60'}`} />
           </button>
           {/* OSINT / Recon Panel Slideout */}
@@ -1017,7 +1019,7 @@ export default function Dashboard() {
         </div>
 
         <div className="relative group">
-          <button onClick={() => { setShowMarkets(!showMarkets); setShowIntel(false); setShowAlerts(false); }} className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${showMarkets ? 'bg-[var(--gold-primary)]/20' : 'hover:bg-white/10'}`}>
+          <button onClick={() => { setShowMarkets(!showMarkets); setShowIntel(false); setShowAlerts(false); setShowAIBrief(false); }} className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${showMarkets ? 'bg-[var(--gold-primary)]/20' : 'hover:bg-white/10'}`}>
             <BarChart3 className={`w-4 h-4 ${showMarkets ? 'text-[var(--gold-primary)]' : 'text-white/60'}`} />
           </button>
           {/* Markets Panel Slideout */}
@@ -1031,7 +1033,7 @@ export default function Dashboard() {
         </div>
 
         <div className="relative group">
-          <button onClick={() => { setShowAlerts(!showAlerts); setShowIntel(false); setShowMarkets(false); setShowEntityGraph(false); }} className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${showAlerts ? 'bg-[#FF3D3D]/20' : 'hover:bg-white/10'}`}>
+          <button onClick={() => { setShowAlerts(!showAlerts); setShowIntel(false); setShowMarkets(false); setShowEntityGraph(false); setShowAIBrief(false); }} className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${showAlerts ? 'bg-[#FF3D3D]/20' : 'hover:bg-white/10'}`}>
             <AlertTriangle className={`w-4 h-4 ${showAlerts ? 'text-[#FF3D3D]' : 'text-white/60'}`} />
           </button>
           {/* Alerts Panel Slideout */}
@@ -1045,13 +1047,26 @@ export default function Dashboard() {
         </div>
 
         <div className="relative group">
-          <button onClick={() => { setShowEntityGraph(!showEntityGraph); setShowIntel(false); setShowMarkets(false); setShowAlerts(false); }} className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${showEntityGraph ? 'bg-[#D4AF37]/20' : 'hover:bg-white/10'}`}>
+          <button onClick={() => { setShowEntityGraph(!showEntityGraph); setShowIntel(false); setShowMarkets(false); setShowAlerts(false); setShowAIBrief(false); }} className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${showEntityGraph ? 'bg-[#D4AF37]/20' : 'hover:bg-white/10'}`}>
             <Network className={`w-4 h-4 ${showEntityGraph ? 'text-[#D4AF37]' : 'text-white/60'}`} />
           </button>
         </div>
 
         <div className="relative group">
-          <button onClick={() => { setShowRightDrawer(!showRightDrawer); setShowIntel(false); setShowMarkets(false); setShowAlerts(false); setShowEntityGraph(false); }} className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${showRightDrawer ? 'bg-[var(--gold-primary)]/20' : 'hover:bg-white/10'}`}>
+          <button onClick={() => { setShowAIBrief(!showAIBrief); setShowIntel(false); setShowMarkets(false); setShowAlerts(false); setShowEntityGraph(false); setShowRightDrawer(false); }} className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${showAIBrief ? 'bg-[var(--cyan-primary)]/20' : 'hover:bg-white/10'}`} title="BEACON Brief">
+            <Bot className={`w-4 h-4 ${showAIBrief ? 'text-[var(--cyan-primary)]' : 'text-white/60'}`} />
+          </button>
+          <AnimatePresence>
+            {showAIBrief && (
+              <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} className="absolute right-12 top-1/2 -translate-y-1/2 w-[430px] max-h-[82vh] overflow-hidden">
+                <AIBriefingPanel beaconData={data} />
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        <div className="relative group">
+          <button onClick={() => { setShowRightDrawer(!showRightDrawer); setShowIntel(false); setShowMarkets(false); setShowAlerts(false); setShowEntityGraph(false); setShowAIBrief(false); }} className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${showRightDrawer ? 'bg-[var(--gold-primary)]/20' : 'hover:bg-white/10'}`}>
             <PanelLeft className={`w-4 h-4 ${showRightDrawer ? 'text-[var(--gold-primary)]' : 'text-white/60'}`} />
           </button>
         </div>
@@ -1328,7 +1343,7 @@ export default function Dashboard() {
       <GlobalStatusBar />
 
       {/* Shortcut hint */}
-      <div className="desktop-only absolute bottom-[26px] right-5 z-[200] pointer-events-none text-[6px] font-mono text-[var(--text-muted)]/40 tracking-widest">
+      <div className="desktop-only absolute bottom-[42px] right-5 z-[200] pointer-events-none text-[7px] font-mono text-[var(--text-muted)]/45 tracking-widest">
         [?] SHORTCUTS · [F] FULLSCREEN · [D] OPS DRAWER · [R] RESET VIEW
       </div>
 

@@ -60,8 +60,8 @@ export default function GlobalStatusBar() {
   const tickerContent = (
     <>
       {exchanges.map(ex => (
-        <span key={ex.name} className="inline-flex items-center gap-0.5 mx-2">
-          <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${ex.open ? 'bg-[var(--alert-green)]' : 'bg-[var(--text-muted)]/30'}`} />
+        <span key={ex.name} className="inline-flex items-center gap-1 mx-3">
+          <span className={`w-2 h-2 rounded-full flex-shrink-0 ${ex.open ? 'bg-[var(--alert-green)]' : 'bg-[var(--text-muted)]/30'}`} />
           <span className={`${ex.open ? 'text-[var(--text-primary)]' : 'text-[var(--text-muted)]/40'}`}>{ex.name}</span>
         </span>
       ))}
@@ -73,8 +73,8 @@ export default function GlobalStatusBar() {
           onMouseEnter={() => setHoveredRisk(r)}
           onMouseLeave={() => setHoveredRisk(null)}
         >
-          <span className="text-[10px]">{countryFlag(r.code)}</span>
-          <span style={{ color: riskColor(r.risk_level) }} className="font-bold">{r.risk_score}</span>
+          <span className="text-[13px]">{countryFlag(r.code)}</span>
+          <span style={{ color: riskColor(r.risk_level) }} className="font-bold text-[10px]">{r.risk_score}</span>
         </span>
       ))}
       <span className="text-[var(--border-primary)] mx-1">|</span>
@@ -92,19 +92,19 @@ export default function GlobalStatusBar() {
       transition={{ delay: 4, duration: 0.8 }}
       className="hidden md:block absolute bottom-0 left-0 right-0 z-[198] pointer-events-none"
     >
-      <div className="h-[22px] overflow-hidden bg-black/90 border-t border-[var(--cyan-primary)]/40 flex items-center text-[8px] font-mono tracking-wider backdrop-blur-md relative" style={{ boxShadow: '0 -4px 20px rgba(0, 229, 255, 0.1)' }}>
+      <div className="h-[32px] overflow-hidden bg-black/92 border-t border-[var(--cyan-primary)]/50 flex items-center text-[10px] font-mono tracking-wider backdrop-blur-md relative" style={{ boxShadow: '0 -4px 20px rgba(0, 229, 255, 0.1)' }}>
         {/* Animated glitch line overlay */}
         <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-[var(--cyan-primary)] to-transparent opacity-50" style={{ animation: 'hud-scanline 3s linear infinite' }} />
         
         {/* Static label */}
-        <div className="flex-shrink-0 px-3 h-full flex items-center gap-1 border-r border-[var(--cyan-primary)]/30 bg-black pointer-events-auto relative z-10 shadow-[4px_0_10px_rgba(0,0,0,0.5)]">
-          <span className="text-[var(--cyan-primary)]/50">MKT</span>
-          <span className="text-[var(--cyan-primary)] font-bold">{openCount}/{exchanges.length}</span>
+        <div className="flex-shrink-0 px-4 h-full flex items-center gap-1.5 border-r border-[var(--cyan-primary)]/35 bg-black pointer-events-auto relative z-10 shadow-[6px_0_14px_rgba(0,0,0,0.55)]">
+          <span className="text-[var(--cyan-primary)]/60 text-[9px]">MKT</span>
+          <span className="text-[var(--cyan-primary)] font-bold text-[11px]">{openCount}/{exchanges.length}</span>
         </div>
 
         {/* CSS-animated ticker */}
         <div className="flex-1 overflow-hidden relative" style={{ maskImage: 'linear-gradient(to right, transparent, black 5%, black 95%, transparent)' }}>
-          <div className="flex items-center animate-ticker whitespace-nowrap">
+          <div className="flex items-center animate-ticker whitespace-nowrap py-1">
             {tickerContent}
             {tickerContent}
           </div>
@@ -114,12 +114,12 @@ export default function GlobalStatusBar() {
       {/* Hover tooltip for risk scores */}
       {hoveredRisk && (
         <div
-          className="absolute bottom-[28px] left-1/2 -translate-x-1/2 z-[300] pointer-events-none"
+          className="absolute bottom-[38px] left-1/2 -translate-x-1/2 z-[300] pointer-events-none"
         >
           <div className="glass-panel px-3 py-2 text-[10px] font-mono text-center whitespace-nowrap" style={{ borderColor: `${riskColor(hoveredRisk.risk_level)}40` }}>
             <div className="flex items-center gap-2 mb-1">
               <span className="text-[12px]">{countryFlag(hoveredRisk.code)}</span>
-              <span className="font-bold" style={{ color: riskColor(hoveredRisk.risk_level) }}>
+              <span className="font-bold text-[10px]" style={{ color: riskColor(hoveredRisk.risk_level) }}>
                 {hoveredRisk.risk_level}
               </span>
               <span className="text-[var(--text-muted)]">Score: {hoveredRisk.risk_score}/100</span>

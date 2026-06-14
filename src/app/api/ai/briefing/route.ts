@@ -13,6 +13,7 @@ import {
   translateToEnglish,
   type IntelligenceContext,
   type BriefingRole,
+  type BriefingMode,
 } from '@/lib/ai-engine';
 
 export const dynamic = 'force-dynamic';
@@ -65,6 +66,7 @@ interface BriefingRequestBody {
   context: IntelligenceContext;
   role?: BriefingRole; // Optional role, defaults to 'general'
   translateNonEnglish?: boolean; // Whether to translate non-English items in context
+  mode?: BriefingMode; // 'highlights' for default short brief, 'full' for full report
 }
 
 interface BriefingResponse {
@@ -72,6 +74,7 @@ interface BriefingResponse {
   generatedAt: string;
   roleUsed: BriefingRole;
   translated: boolean; // Whether translation was performed
+  modeUsed: BriefingMode;
 }
 
 interface ErrorResponse {
@@ -131,8 +134,9 @@ export async function POST(
     );
   }
 
-  // Determine role (default to 'general')
+  // Determine role and mode
   const role: BriefingRole = body.role ?? 'general';
+  const mode: BriefingMode = body.mode === 'full' ? 'full' : 'highlights';
 
   // Fetch feed health to include in context for confidence annotation
   let feedHealth; // We'll type this as any since it's an optional addition
@@ -235,7 +239,7 @@ export async function POST(
 
   try {
     // Generate briefing using the OpenRouter-only AI engine
-    const briefing = await generateBriefing(processedContext, role);
+    const briefing = await generateBriefing(processedContext, role, mode);
 
     return NextResponse.json(
       {
@@ -243,6 +247,7 @@ export async function POST(
         generatedAt: new Date().toISOString(),
         roleUsed: role,
         translated,
+        modeUsed: mode,
       },
       {
         status: 200,
