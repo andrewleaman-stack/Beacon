@@ -292,7 +292,7 @@ ${text}`
 ${text}`;
 
   const response = await callOpenRouter({
-    model: 'nvidia/nemotron-3.5-22b-instruct:free',
+    model: 'nvidia/nemotron-3.5-content-safety:free',
     messages: [
       { role: 'system', content: systemPrompt },
       { role: 'user', content: userContent },
@@ -324,7 +324,7 @@ ${ROLE_PROMPTS[role]}`;
   const contextData = serializeContext(context);
 
   const response = await callOpenRouter({
-    model: 'nvidia/nemotron-3.5-22b-instruct:free',
+    model: 'nvidia/nemotron-3.5-content-safety:free',
     messages: [
       { role: 'system', content: systemPrompt },
       {
@@ -359,7 +359,7 @@ ${ROLE_PROMPTS[role]}`;
   const contextData = serializeContext(context);
 
   const response = await callOpenRouter({
-    model: 'nvidia/nemotron-3.5-22b-instruct:free',
+    model: 'nvidia/nemotron-3.5-content-safety:free',
     messages: [
       { role: 'system', content: systemPrompt },
       {
