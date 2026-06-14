@@ -7,7 +7,7 @@ import EntityDetailsPanel from '@/components/EntityDetailsPanel';
 import ReconOutputPanel from '@/components/ReconOutputPanel';
 import RelatedIncidentsPanel from '@/components/RelatedIncidentsPanel';
 import SourceLinksTimelinePanel from '@/components/SourceLinksTimelinePanel';
-import AIBriefPlaceholderPanel from '@/components/AIBriefPlaceholderPanel';
+import AIBriefingPanel from '@/components/AIBriefingPanel';
 import { registerPanel, getActivePanels, type PanelContext, type EntityRef, clearRegistry } from '@/lib/panel-registry.mjs';
 
 const PANEL_CONFIG = [
@@ -15,7 +15,7 @@ const PANEL_CONFIG = [
   { id: 'recon-output', label: 'RECON', icon: Target, Component: ReconOutputPanel, priority: 20 },
   { id: 'related-incidents', label: 'INCIDENTS', icon: AlertTriangle, Component: RelatedIncidentsPanel, priority: 30 },
   { id: 'source-links-timeline', label: 'SOURCES', icon: Link, Component: SourceLinksTimelinePanel, priority: 40 },
-  { id: 'ai-brief', label: 'AI BRIEF', icon: Bot, Component: AIBriefPlaceholderPanel, priority: 50 },
+  { id: 'ai-brief', label: 'AI BRIEF', icon: Bot, Component: AIBriefingPanel, priority: 50 },
 ];
 
 const AlertCircle = ({ className, ...props }: React.SVGProps<SVGSVGElement>) => (
