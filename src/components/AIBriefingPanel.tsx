@@ -141,8 +141,28 @@ export default function AIBriefingPanel({ entity, beaconData, onGenerateBrief }:
 
   const intelligenceContext = useMemo(() => beaconDataToIntelligenceContext(beaconData), [beaconData]);
 
+  const requestContext = useMemo(() => {
+    if (briefingMode === 'full') return intelligenceContext;
+
+    const severityRank: Record<string, number> = { CRITICAL: 4, HIGH: 3, ELEVATED: 2, LOW: 1 };
+
+    return {
+      ...intelligenceContext,
+      earthquakes: [...intelligenceContext.earthquakes]
+        .sort((a, b) => b.magnitude - a.magnitude)
+        .slice(0, 8),
+      news: [...intelligenceContext.news]
+        .sort((a, b) => b.risk_score - a.risk_score)
+        .slice(0, 8),
+      threats: [...intelligenceContext.threats]
+        .sort((a, b) => (severityRank[b.severity] ?? 0) - (severityRank[a.severity] ?? 0))
+        .slice(0, 8),
+      cyberAlerts: intelligenceContext.cyberAlerts.slice(0, 8),
+    };
+  }, [briefingMode, intelligenceContext]);
+
   const handleGenerateBrief = useCallback(async () => {
-    if (!intelligenceContext || isGenerating) return;
+    if (!requestContext || isGenerating) return;
     setIsGenerating(true);
     setError(null);
     setBriefing(null);
@@ -154,7 +174,7 @@ export default function AIBriefingPanel({ entity, beaconData, onGenerateBrief }:
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          context: intelligenceContext,
+          context: requestContext,
           role,
           translateNonEnglish,
           mode: briefingMode,
@@ -174,7 +194,7 @@ export default function AIBriefingPanel({ entity, beaconData, onGenerateBrief }:
     } finally {
       setIsGenerating(false);
     }
-  }, [intelligenceContext, role, translateNonEnglish, briefingMode]);
+  }, [requestContext, role, translateNonEnglish, briefingMode]);
 
   const handleCopyBrief = useCallback(async () => {
     if (!briefing) return;
@@ -200,7 +220,7 @@ export default function AIBriefingPanel({ entity, beaconData, onGenerateBrief }:
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          context: intelligenceContext,
+          context: requestContext,
           role,
           translateNonEnglish: true,
           mode: briefingMode,
@@ -220,7 +240,7 @@ export default function AIBriefingPanel({ entity, beaconData, onGenerateBrief }:
     } finally {
       setIsTranslating(false);
     }
-  }, [briefing, intelligenceContext, role, briefingMode]);
+  }, [briefing, requestContext, role, briefingMode]);
 
   const entityContext = entity ? `
 Type: ${entity.type}
