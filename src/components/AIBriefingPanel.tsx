@@ -150,14 +150,14 @@ export default function AIBriefingPanel({ entity, beaconData, onGenerateBrief }:
       ...intelligenceContext,
       earthquakes: [...intelligenceContext.earthquakes]
         .sort((a, b) => b.magnitude - a.magnitude)
-        .slice(0, 8),
+        .slice(0, 3),
       news: [...intelligenceContext.news]
         .sort((a, b) => b.risk_score - a.risk_score)
-        .slice(0, 8),
+        .slice(0, 3),
       threats: [...intelligenceContext.threats]
         .sort((a, b) => (severityRank[b.severity] ?? 0) - (severityRank[a.severity] ?? 0))
-        .slice(0, 8),
-      cyberAlerts: intelligenceContext.cyberAlerts.slice(0, 8),
+        .slice(0, 3),
+      cyberAlerts: intelligenceContext.cyberAlerts.slice(0, 3),
     };
   }, [briefingMode, intelligenceContext]);
 

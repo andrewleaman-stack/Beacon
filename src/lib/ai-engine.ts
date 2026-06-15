@@ -393,18 +393,11 @@ ${ROLE_PROMPTS[role]}`;
       { role: 'system', content: systemPrompt },
       {
         role: 'user',
-        content: `${BRIEFING_PROMPT_BASE}
-
-${briefingPrompt}
-
-## CURRENT OPERATIONAL DATA
-${contextData}
-
-Generate the briefing now.`,
+        content: `${BRIEFING_PROMPT_BASE}\n\n${briefingPrompt}\n\n## CURRENT OPERATIONAL DATA\n${contextData}\n\nGenerate the briefing now.`,
       },
     ],
     temperature: 0.3,
-    max_tokens: 3000,
+    max_tokens: mode === 'highlights' ? 800 : 2000,
   });
 
   return response.choices[0]?.message?.content?.trim() ?? 'No briefing generated';
