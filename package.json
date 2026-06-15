@@ -9,6 +9,7 @@
     "lint": "eslint",
     "test:feed-health": "node --test scripts/feed-health.test.mjs",
     "test:briefing-log": "node --test scripts/briefing-log.test.mjs",
+    "test:conflict-events": "node --test scripts/conflict-events.test.mjs",
     "test:live-feeds": "node --test scripts/live-feeds.test.mjs",
     "test:credentialed-feeds": "node --test scripts/credentialed-feeds.test.mjs",
     "test:hazard-feeds": "node --test scripts/hazard-feeds.test.mjs",

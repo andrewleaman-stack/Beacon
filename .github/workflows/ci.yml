@@ -43,6 +43,9 @@ jobs:
       - name: Briefing log unit tests
         run: npm run test:briefing-log
 
+      - name: Conflict events unit tests
+        run: npm run test:conflict-events
+
       - name: Typecheck
         run: npm run typecheck
 
