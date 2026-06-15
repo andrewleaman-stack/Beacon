@@ -15,8 +15,7 @@ import {
   type BriefingRole,
   type BriefingMode,
 } from '@/lib/ai-engine';
-import { promises as fs } from 'fs';
-import path from 'path';
+import { appendBriefing } from '@/lib/briefing-log.mjs';
 
 export const dynamic = 'force-dynamic';
 
@@ -238,19 +237,9 @@ export async function POST(
   try {
     // Generate briefing using the OpenRouter-only AI engine
     const briefing = await generateBriefing(processedContext, role, mode);
-    // Log briefing for backlog/trend tracking
+    // Log briefing to the shared backlog (id + retention handled centrally).
     try {
-      const logDir = path.join('/tmp', 'beacon_briefs');
-      await fs.mkdir(logDir, { recursive: true });
-      const logPath = path.join(logDir, 'briefs.log');
-      const logEntry = JSON.stringify({
-        timestamp: new Date().toISOString(),
-        role,
-        mode,
-        briefing,
-        translated,
-      }) + '\n';
-      await fs.appendFile(logPath, logEntry, 'utf8');
+      await appendBriefing({ role, mode, briefing, translated });
     } catch (logErr) {
       // Logging failure should not break the briefing response
       console.warn('[BEACON AI] Failed to log briefing:', logErr);
