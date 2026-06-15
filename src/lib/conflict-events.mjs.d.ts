@@ -31,9 +31,11 @@ export function fetchUcdpEvents(opts?: {
   now?: Date;
 }): Promise<ConflictEvent[]>;
 
+export function __resetAcledTokenCache(): void;
+
 export function fetchAcledEvents(opts?: {
-  key?: string;
   email?: string;
+  password?: string;
   limit?: number;
   fetchImpl?: typeof fetch;
   now?: Date;
@@ -44,7 +46,7 @@ export function fetchConflictEvents(opts?: {
   fetchImpl?: typeof fetch;
   now?: Date;
   ucdp?: { token?: string; version?: string; pageSize?: number };
-  acled?: { key?: string; email?: string; limit?: number };
+  acled?: { email?: string; password?: string; limit?: number };
 }): Promise<{
   events: ConflictEvent[];
   sources: string[];
