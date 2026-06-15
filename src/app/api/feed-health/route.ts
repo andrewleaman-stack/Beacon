@@ -12,6 +12,7 @@ const FEED_PROBES = [
   { path: '/api/live-news', timeoutMs: 5_000, pick: (payload: any) => ({ live_feeds: payload.feeds || [] }) },
   { path: '/api/infrastructure', timeoutMs: 5_000, pick: (payload: any) => ({ infrastructure: payload.infrastructure || [] }) },
   { path: '/api/weather', timeoutMs: 5_000, pick: (payload: any) => ({ weather_events: payload.events || [] }) },
+  { path: '/api/radiation', timeoutMs: 8_000, pick: (payload: any) => ({ radiation: payload.stations || [] }) },
   { path: '/api/nws-alerts', timeoutMs: 5_000, pick: (payload: any) => ({ nws_alerts: payload.alerts || [] }) },
   { path: '/api/openmhz', timeoutMs: 5_000, pick: (payload: any) => ({ openmhz: payload.feeds || [] }) },
   { path: '/api/fires', timeoutMs: 5_000, pick: (payload: any) => ({ fires: payload.fires || [] }) },
