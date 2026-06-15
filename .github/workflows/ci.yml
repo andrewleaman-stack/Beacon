@@ -52,6 +52,9 @@ jobs:
       - name: Port disruptions unit tests
         run: npm run test:port-disruptions
 
+      - name: Situations engine unit tests
+        run: npm run test:situations
+
       - name: Typecheck
         run: npm run typecheck
 
