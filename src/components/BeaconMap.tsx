@@ -167,7 +167,7 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
       createDot(map, 'dot-fire', '#E65100', 10);
       createDot(map, 'dot-cctv', '#7E57C2', 10);
 
-      const sources = ['flights','military','jets','private-fl','satellites','earthquakes','gdelt','gps-jamming','day-night','cctv','fires','weather','infrastructure','maritime','maritime-choke','maritime-ships','live-news','sigint-news','conflict-zones', 'war-alerts-targets', 'war-alerts-lines', 'balloons', 'radiation', 'port-disruptions', 'ip-sweep-devices', 'ip-sweep-pulse', 'ip-sweep-connections', 'scan-targets', 'sdk-entities', 'sdk-links', 'malware-nodes', 'network-mesh'];
+      const sources = ['flights','military','jets','private-fl','satellites','earthquakes','gdelt','gps-jamming','day-night','cctv','fires','weather','infrastructure','maritime','maritime-choke','maritime-ships','live-news','sigint-news','conflict-zones', 'war-alerts-targets', 'war-alerts-lines', 'balloons', 'radiation', 'port-disruptions', 'conflict-events', 'ip-sweep-devices', 'ip-sweep-pulse', 'ip-sweep-connections', 'scan-targets', 'sdk-entities', 'sdk-links', 'malware-nodes', 'network-mesh'];
       sources.forEach(s => map.addSource(s, { type: 'geojson', data: EMPTY_FC }));
 
       // Warning icon generator (parameterized — eliminates 3x copy-paste)
@@ -503,6 +503,23 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
         'text-field': ['get','portName'], 'text-size': 9, 'text-font': ['Open Sans Bold'],
         'text-offset': [0, 1.4], 'text-allow-overlap': false,
       }, paint: { 'text-color': ['match', ['get','status'], 'ACTIVE','#D32F2F', '#FB8C00'], 'text-halo-color': '#000', 'text-halo-width': 1 }});
+
+      // Conflict events (UCDP/ACLED) — colored by severity
+      map.addLayer({ id: 'ce-glow', type: 'circle', source: 'conflict-events', paint: {
+        'circle-radius': ['interpolate',['linear'],['zoom'], 1,7, 5,14, 10,26],
+        'circle-color': ['match', ['get','severity'], 'critical','#D32F2F', 'high','#E65100', 'elevated','#F9A825', '#7E57C2'],
+        'circle-opacity': 0.12, 'circle-blur': 1,
+      }});
+      map.addLayer({ id: 'ce-dots', type: 'circle', source: 'conflict-events', paint: {
+        'circle-radius': ['interpolate',['linear'],['zoom'], 1,4, 5,6, 10,8],
+        'circle-color': ['match', ['get','severity'], 'critical','#D32F2F', 'high','#E65100', 'elevated','#F9A825', '#7E57C2'],
+        'circle-opacity': 0.85,
+        'circle-stroke-width': 1.5, 'circle-stroke-color': ['match', ['get','severity'], 'critical','#D32F2F', 'high','#E65100', 'elevated','#F9A825', '#7E57C2'], 'circle-stroke-opacity': 0.4,
+      }});
+      map.addLayer({ id: 'ce-label', type: 'symbol', source: 'conflict-events', minzoom: 4, layout: {
+        'text-field': ['get','country'], 'text-size': 9, 'text-font': ['Open Sans Bold'],
+        'text-offset': [0, 1.4], 'text-allow-overlap': false,
+      }, paint: { 'text-color': ['match', ['get','severity'], 'critical','#D32F2F', 'high','#E65100', 'elevated','#F9A825', '#7E57C2'], 'text-halo-color': '#000', 'text-halo-width': 1 }});
 
       // ══ BEACON SDK — Lattice Intelligence Mesh ══
       // Polybolos Style: Delicate, translucent, steel-blue splined mesh
@@ -1160,6 +1177,11 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
     setGeo('port-disruptions', activeLayers.port_disruptions && data.port_disruptions ? data.port_disruptions.map((p: any) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [p.lng, p.lat] }, properties: { portName: p.portName, country: p.country, eventName: p.eventName, status: p.status, fromDate: p.fromDate, toDate: p.toDate, source: p.source } })) : []);
   }, [mapReady, data.port_disruptions, activeLayers.port_disruptions, setGeo]);
 
+  useEffect(() => {
+    if (!mapReady) return;
+    setGeo('conflict-events', activeLayers.conflict_events && data.conflict_events ? data.conflict_events.map((c: any) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [c.lng, c.lat] }, properties: { title: c.title, country: c.country, eventType: c.eventType, severity: c.severity, fatalities: c.fatalities, date: c.date, source: c.source } })) : []);
+  }, [mapReady, data.conflict_events, activeLayers.conflict_events, setGeo]);
+
   // ══ BEACON SDK — Lattice Sensor Mesh ══
   // Uses real submarine cable data for SEA domain, curated routes for AIR/INTEL
   useEffect(() => {
@@ -1275,6 +1297,7 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
     setVis(['balloon-dots','balloon-label'], activeLayers.balloons);
     setVis(['rad-glow','rad-dots','rad-label'], activeLayers.radiation);
     setVis(['pd-glow','pd-dots','pd-label'], activeLayers.port_disruptions);
+    setVis(['ce-glow','ce-dots','ce-label'], activeLayers.conflict_events);
     setVis(['sdk-sea','sdk-sea-glow','sdk-sea-atmo'], activeLayers.sdk_sea !== false);
     setVis(['sdk-air','sdk-air-glow','sdk-air-atmo'], activeLayers.sdk_air !== false);
     setVis(['sdk-intel','sdk-intel-glow','sdk-intel-atmo'], activeLayers.sdk_naval !== false);
