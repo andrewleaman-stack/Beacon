@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { fetchConflictEvents } from '@/lib/conflict-events.mjs';
-import type { ConflictEvent } from '@/lib/conflict-events.mjs';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,7 +13,7 @@ export async function GET() {
     const { events, sources, configured, errors } = await fetchConflictEvents({ limit });
 
     const anyConfigured = configured.ucdp || configured.acled;
-    const bySeverity = events.reduce((acc: Record<string, number>, event: ConflictEvent) => {
+    const bySeverity = events.reduce((acc: Record<string, number>, event: { severity: string }) => {
       acc[event.severity] = (acc[event.severity] || 0) + 1;
       return acc;
     }, {});
