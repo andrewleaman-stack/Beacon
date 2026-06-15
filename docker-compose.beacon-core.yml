@@ -17,6 +17,10 @@ services:
       NODE_ENV: production
       PORT: "3000"
       HOSTNAME: 0.0.0.0
+      # Persist the AI briefing backlog to the mounted volume below (survives
+      # container restarts). The host dir must be writable by the container
+      # user (uid 1001) — see docs/deploy/beacon-core.md.
+      BEACON_BRIEF_LOG_DIR: /var/log/beacon_briefs
     volumes:
       - ./beacon_briefs:/var/log/beacon_briefs
     extra_hosts:
