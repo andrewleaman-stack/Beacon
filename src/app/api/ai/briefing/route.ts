@@ -169,10 +169,10 @@ export async function POST(
   // Optional: Translate non-English items in the context before generating briefing
   let translated = false;
   let processedContext = body.context;
-  if (body.translateNonEnglish !== false) { // Default to true if not explicitly false
+  if (body.translateNonEnglish !== false && mode === 'full') { // Full reports may pre-translate; highlights keep latency low
     try {
-      // We'll translate text fields in news items and threat events
-      // This is a simplified approach; in production you might want more sophisticated translation
+      // Translate text fields in news items and threat events for full reports only.
+      // Highlights mode asks the briefing model to translate only relevant snippets inline.
       const contextCopy = JSON.parse(JSON.stringify(body.context)); // Deep copy
 
       // Add feed health to context

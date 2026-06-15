@@ -168,8 +168,11 @@ export default function AIBriefingPanel({ entity, beaconData, onGenerateBrief }:
     setBriefing(null);
 
     try {
+      const controller = new AbortController();
+      const timeout = window.setTimeout(() => controller.abort(), 45_000);
       const response = await fetch('/api/ai/briefing', {
         method: 'POST',
+        signal: controller.signal,
         headers: {
           'Content-Type': 'application/json',
         },
@@ -180,6 +183,7 @@ export default function AIBriefingPanel({ entity, beaconData, onGenerateBrief }:
           mode: briefingMode,
         }),
       });
+      window.clearTimeout(timeout);
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -190,7 +194,7 @@ export default function AIBriefingPanel({ entity, beaconData, onGenerateBrief }:
       setBriefing(data.briefing);
     } catch (err: any) {
       console.error('[BEACON AI] Briefing generation error:', err);
-      setError(err.message || 'Failed to generate briefing');
+      setError(err?.name === 'AbortError' ? 'Briefing timed out after 45 seconds. Try again or switch translation off.' : (err.message || 'Failed to generate briefing'));
     } finally {
       setIsGenerating(false);
     }
