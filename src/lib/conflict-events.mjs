@@ -13,18 +13,53 @@
  *           https://ucdpapi.pcr.uu.se/api/gedevents/<version>?pagesize=N
  *           (GED 26.1; Candidate Monthly 26.0.4 for the most recent events).
  *           Env: UCDP_ACCESS_TOKEN, optional UCDP_GED_VERSION.
- *   ACLED — read API with key + email; request via
- *           https://api.acleddata.com/acled/read?key=KEY&email=EMAIL&...
- *           Env: ACLED_API_KEY, ACLED_EMAIL.
- *
- * Note: ACLED has been migrating its access portal — if a deployment's token
- * uses the newer OAuth flow rather than the classic key+email read API, only
- * fetchAcledEvents needs adjusting; the normalizer and wiring are unaffected.
+ *   ACLED — OAuth password grant. POST myACLED email + password to
+ *           https://acleddata.com/oauth/token for a bearer token, then GET
+ *           https://acleddata.com/api/acled/read with Authorization: Bearer.
+ *           Env: ACLED_EMAIL, ACLED_PASSWORD. (ACLED retired the old
+ *           key+email read API; there is no static API key any more.)
  */
 
 const UCDP_DEFAULT_VERSION = '26.1';
 const UCDP_API_BASE = 'https://ucdpapi.pcr.uu.se/api/gedevents';
-const ACLED_API_URL = 'https://api.acleddata.com/acled/read';
+const ACLED_OAUTH_URL = 'https://acleddata.com/oauth/token';
+const ACLED_READ_URL = 'https://acleddata.com/api/acled/read';
+
+// In-memory bearer-token cache (tokens last ~24h). Avoids re-authenticating on
+// every fetch. Keyed by account email so a credential change invalidates it.
+let acledTokenCache = { email: null, token: null, expiresAt: 0 };
+
+export function __resetAcledTokenCache() {
+  acledTokenCache = { email: null, token: null, expiresAt: 0 };
+}
+
+async function getAcledToken({ email, password, fetchImpl, now }) {
+  const nowMs = now.getTime();
+  if (acledTokenCache.token && acledTokenCache.email === email && acledTokenCache.expiresAt > nowMs + 60_000) {
+    return acledTokenCache.token;
+  }
+  const body = new URLSearchParams({
+    username: email,
+    password,
+    grant_type: 'password',
+    client_id: 'acled',
+    scope: 'authenticated',
+  });
+  const response = await fetchImpl(ACLED_OAUTH_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'BEACON/1.0 conflict-events' },
+    body,
+  });
+  if (!response.ok) throw new Error(`ACLED OAuth returned HTTP ${response.status}`);
+  const data = await response.json();
+  if (!data?.access_token) throw new Error('ACLED OAuth response had no access_token');
+  acledTokenCache = {
+    email,
+    token: data.access_token,
+    expiresAt: nowMs + (Number(data.expires_in) || 86400) * 1000,
+  };
+  return data.access_token;
+}
 
 function clean(value) {
   return String(value ?? '').trim();
@@ -149,17 +184,18 @@ export async function fetchUcdpEvents({
 }
 
 export async function fetchAcledEvents({
-  key = process.env.ACLED_API_KEY,
   email = process.env.ACLED_EMAIL,
+  password = process.env.ACLED_PASSWORD,
   limit = 200,
   fetchImpl = fetch,
   now = new Date(),
 } = {}) {
-  if (!key || !email) return [];
-  const params = new URLSearchParams({ key, email, limit: String(limit) });
-  const response = await fetchImpl(`${ACLED_API_URL}?${params.toString()}`, {
+  if (!email || !password) return [];
+  const token = await getAcledToken({ email, password, fetchImpl, now });
+  const params = new URLSearchParams({ _format: 'json', limit: String(limit) });
+  const response = await fetchImpl(`${ACLED_READ_URL}?${params.toString()}`, {
     cache: 'no-store',
-    headers: { 'User-Agent': 'BEACON/1.0 conflict-events' },
+    headers: { Authorization: `Bearer ${token}`, 'User-Agent': 'BEACON/1.0 conflict-events' },
   });
   if (!response.ok) throw new Error(`ACLED API returned HTTP ${response.status}`);
   const payload = await response.json();
@@ -182,7 +218,7 @@ export async function fetchConflictEvents({
   const errors = [];
   const configured = {
     ucdp: Boolean(ucdp.token ?? process.env.UCDP_ACCESS_TOKEN),
-    acled: Boolean((acled.key ?? process.env.ACLED_API_KEY) && (acled.email ?? process.env.ACLED_EMAIL)),
+    acled: Boolean((acled.email ?? process.env.ACLED_EMAIL) && (acled.password ?? process.env.ACLED_PASSWORD)),
   };
 
   const results = await Promise.allSettled([

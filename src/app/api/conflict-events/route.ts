@@ -29,7 +29,7 @@ export async function GET() {
         status: anyConfigured ? (events.length ? 'live' : 'empty') : 'unconfigured',
         notice: anyConfigured
           ? undefined
-          : 'No conflict-event credentials configured. Set UCDP_ACCESS_TOKEN (https://ucdp.uu.se/apidocs/) and/or ACLED_API_KEY + ACLED_EMAIL (https://acleddata.com/) to activate.',
+          : 'No conflict-event credentials configured. Set UCDP_ACCESS_TOKEN (https://ucdp.uu.se/apidocs/) and/or ACLED_EMAIL + ACLED_PASSWORD (myACLED login, https://acleddata.com/) to activate.',
         errors: errors.length ? errors : undefined,
       },
       {

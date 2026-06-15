@@ -7,6 +7,7 @@ import {
   normalizeUcdpEvent,
   normalizeAcledEvent,
   fetchConflictEvents,
+  __resetAcledTokenCache,
 } from '../src/lib/conflict-events.mjs';
 
 const UCDP_SAMPLE = {
@@ -47,6 +48,10 @@ const ACLED_SAMPLE = {
 
 function fakeFetch(payloadByHost) {
   return async (url) => {
+    // ACLED authenticates first via OAuth, then reads.
+    if (url.includes('/oauth/token')) {
+      return { ok: true, status: 200, json: async () => ({ access_token: 'tok', expires_in: 86400 }) };
+    }
     const host = url.includes('ucdp') ? 'ucdp' : 'acled';
     const entry = payloadByHost[host];
     if (entry instanceof Error) throw entry;
@@ -103,6 +108,7 @@ test('fetchConflictEvents returns empty + unconfigured when no credentials', asy
 });
 
 test('fetchConflictEvents merges both providers, newest-first, honors limit', async () => {
+  __resetAcledTokenCache();
   const fetchImpl = fakeFetch({
     ucdp: { body: { Result: [UCDP_SAMPLE] } },
     acled: { body: { data: [ACLED_SAMPLE] } },
@@ -110,7 +116,7 @@ test('fetchConflictEvents merges both providers, newest-first, honors limit', as
   const all = await fetchConflictEvents({
     fetchImpl,
     ucdp: { token: 'T' },
-    acled: { key: 'K', email: 'e@x.io' },
+    acled: { email: 'e@x.io', password: 'P' },
   });
   assert.equal(all.events.length, 2);
   // ACLED (2024-05) is newer than UCDP (2024-03)
@@ -122,13 +128,14 @@ test('fetchConflictEvents merges both providers, newest-first, honors limit', as
     fetchImpl,
     limit: 1,
     ucdp: { token: 'T' },
-    acled: { key: 'K', email: 'e@x.io' },
+    acled: { email: 'e@x.io', password: 'P' },
   });
   assert.equal(capped.events.length, 1);
   assert.equal(capped.events[0].source, 'ACLED');
 });
 
 test('one provider failing does not suppress the other', async () => {
+  __resetAcledTokenCache();
   const fetchImpl = fakeFetch({
     ucdp: new Error('UCDP down'),
     acled: { body: { data: [ACLED_SAMPLE] } },
@@ -136,7 +143,7 @@ test('one provider failing does not suppress the other', async () => {
   const result = await fetchConflictEvents({
     fetchImpl,
     ucdp: { token: 'T' },
-    acled: { key: 'K', email: 'e@x.io' },
+    acled: { email: 'e@x.io', password: 'P' },
   });
   assert.equal(result.events.length, 1);
   assert.equal(result.events[0].source, 'ACLED');

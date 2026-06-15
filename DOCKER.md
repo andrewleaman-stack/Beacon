@@ -69,7 +69,7 @@ If the image is unavailable, Compose can build locally from the included `Docker
 | `N2YO_API_KEY` | Optional N2YO satellite API key | unset |
 | `UCDP_ACCESS_TOKEN` | Optional UCDP conflict-events token ([request](https://ucdp.uu.se/apidocs/)) | unset |
 | `UCDP_GED_VERSION` | UCDP dataset version | `26.1` |
-| `ACLED_API_KEY` / `ACLED_EMAIL` | Optional ACLED conflict-events credentials | unset |
+| `ACLED_EMAIL` / `ACLED_PASSWORD` | Optional ACLED myACLED login (OAuth password grant; no static API key) | unset |
 | `CONFLICT_EVENT_LIMIT` | Max merged UCDP+ACLED events returned | `250` |
 
 ## Safety
