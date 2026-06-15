@@ -46,6 +46,9 @@ jobs:
       - name: Conflict events unit tests
         run: npm run test:conflict-events
 
+      - name: Radiation unit tests
+        run: npm run test:radiation
+
       - name: Typecheck
         run: npm run typecheck
 
