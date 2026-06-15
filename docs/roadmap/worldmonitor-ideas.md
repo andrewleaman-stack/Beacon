@@ -65,14 +65,59 @@ Candidate list starts here:
 - [ ] CVE/cyber advisories
 - [ ] Space weather / satellite feeds
 
-## Retirement criteria for WorldMonitor
+## 2026-06-14 — Final source scan before retirement
 
-WorldMonitor can be retired only when:
+Scanned WorldMonitor's provider inventory (`.env.example` keys + `api/` route
+categories) and compared against BEACON's existing routes. Sources are facts;
+no AGPL code was read for reuse. Result below.
 
-- BEACON is deployed and monitored on beacon-core.
-- BEACON has equivalent or better coverage for the feeds Andrew actually uses.
-- BEACON exposes feed freshness, not just app liveness.
-- Any borrowed concepts have been clean-room reimplemented or explicitly rejected.
-- Andrew approves turning WorldMonitor down.
+### Already covered by BEACON — no action
 
-Until then: keep it. It is useful scaffolding, not clutter yet.
+These WorldMonitor sources are already implemented in BEACON, so they are *not*
+borrow candidates:
+
+- OREF / Home Front Command rocket alerts → `src/components/LiveAlerts.tsx`
+- GPSJam GPS-interference → referenced in `api/flights`
+- AbuseIPDB / AlienVault OTX → `api/osint/ip`, `api/osint/threats`
+- URLhaus malware → `api/malware`
+- OpenAQ air quality → `api/air-quality`
+- CoinGecko / markets → `api/markets`
+- USGS quakes, NWS alerts, FIRMS fires, OpenSky, AIS, GDELT, CVE, space weather,
+  satellites — all already live in BEACON.
+
+### Borrow shortlist (clean-room, prioritized)
+
+Genuine coverage gaps worth reimplementing from provider docs:
+
+1. **Conflict intelligence — ACLED + UCDP.** Authoritative academic conflict-event
+   datasets. Would deepen BEACON's existing `frontlines` layer with structured,
+   sourced events. (Both need free access tokens; respect their terms.)
+2. **Energy / grid infrastructure — ENTSO-E (EU electricity load/outages), GIE
+   (EU gas storage), EIA (US energy).** Strong fit for BEACON's infrastructure
+   focus; ENTSO-E is only referenced today in an SDK adapter, not a live feed.
+3. **Maritime / supply chain — IMF PortWatch.** Port congestion and chokepoint
+   disruption; complements `maritime` + `submarine-cable-faults`.
+4. **Macro-economic — FRED + IMF + UN COMTRADE.** Economic situational awareness
+   beyond the market ticker.
+5. **Prediction signals — Polymarket.** Forward-looking geopolitical/event
+   probabilities as a leading indicator.
+6. **Radiation — Safecast / EURDEP.** Environmental radiation monitoring;
+   complements the existing NRC events feed.
+
+Lower priority / optional: WAQI (alt air quality — already have OpenAQ), Finnhub
+(markets enrichment), WTO trade.
+
+## Retirement — DONE 2026-06-14
+
+WorldMonitor was retired and removed from beacon-core on 2026-06-14, freeing port
+`3010`. Retirement criteria were met:
+
+- BEACON is deployed and monitored on beacon-core (`/api/health` on `3011`).
+- BEACON has equivalent or better coverage for the feeds in use; remaining gaps
+  are captured in the borrow shortlist above (forward work, not blockers).
+- Borrowable source ideas have been recorded clean-room before turndown.
+- Andrew approved turndown.
+
+WorldMonitor's code remains recoverable upstream at
+`https://github.com/koala73/worldmonitor`. Andrew's local deployment tweaks were
+archived to a tarball on beacon-core at removal time (see CHANGELOG/Hermes log).
