@@ -7,6 +7,7 @@ export const FEED_DEFINITIONS = [
   { key: 'earthquakes', label: 'USGS Earthquakes', dataKeys: ['earthquakes'], layerKey: 'earthquakes', staleAfterMs: 30 * 60_000 },
   { key: 'gdelt', label: 'GDELT Incidents', dataKeys: ['gdelt'], layerKey: 'global_incidents', staleAfterMs: 30 * 60_000 },
   { key: 'conflict_events', label: 'Conflict Events (UCDP/ACLED)', dataKeys: ['conflict_events'], layerKey: 'conflict_events', staleAfterMs: 7 * 24 * 60 * 60_000 },
+  { key: 'port_disruptions', label: 'Port Disruptions (IMF PortWatch)', dataKeys: ['port_disruptions'], layerKey: 'port_disruptions', staleAfterMs: 24 * 60 * 60_000 },
   { key: 'maritime', label: 'Maritime AIS', dataKeys: ['maritime_ships', 'maritime_ports', 'maritime_chokepoints'], layerKey: 'maritime', staleAfterMs: 60_000 },
   { key: 'live_news', label: 'Live News Feeds', dataKeys: ['live_feeds'], layerKey: 'live_news', staleAfterMs: 6 * 60 * 60_000 },
   { key: 'infrastructure', label: 'Infrastructure', dataKeys: ['infrastructure'], layerKey: 'infrastructure', staleAfterMs: 60 * 60_000 },
