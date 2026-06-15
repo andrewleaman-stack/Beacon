@@ -16,78 +16,243 @@ import {
   type BriefingMode,
 } from '@/lib/ai-engine';
 import { promises as fs } from 'fs';
-    console.log('[BEACON AI] Briefing generated, length:', briefing.length);
+import path from 'path';
+
+export const dynamic = 'force-dynamic';
+
+/* ─────────────────────────────────────────────────────────────
+   Rate Limiter — 5 requests per minute per IP
+   ───────────────────────────────────────────────────────────── */
+
+interface RateLimitEntry {
+  count: number;
+  resetAt: number;
+}
+
+const rateLimitMap = new Map<string, RateLimitEntry>();
+const RATE_LIMIT_MAX = 5;
+const RATE_LIMIT_WINDOW_MS = 60_000;
+
+function checkRateLimit(ip: string): { allowed: boolean; remaining: number; resetIn: number } {
+  const now = Date.now();
+  const entry = rateLimitMap.get(ip);
+
+  if (!entry || now > entry.resetAt) {
+    rateLimitMap.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+    return { allowed: true, remaining: RATE_LIMIT_MAX - 1, resetIn: RATE_LIMIT_WINDOW_MS };
+  }
+
+  if (entry.count >= RATE_LIMIT_MAX) {
+    return { allowed: false, remaining: 0, resetIn: entry.resetAt - now };
+  }
+
+  entry.count++;
+  return { allowed: true, remaining: RATE_LIMIT_MAX - entry.count, resetIn: entry.resetAt - now };
+}
+
+// Periodic cleanup to prevent memory leaks
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, entry] of rateLimitMap.entries()) {
+    if (now > entry.resetAt) {
+      rateLimitMap.delete(ip);
+    }
+  }
+}, 120_000);
+
+/* ─────────────────────────────────────────────────────────────
+   Request / Response types
+   ───────────────────────────────────────────────────────────── */
+
+interface BriefingRequestBody {
+  context: IntelligenceContext;
+  role?: BriefingRole; // Optional role, defaults to 'general'
+  translateNonEnglish?: boolean; // Whether to translate non-English items in context
+  mode?: BriefingMode; // 'highlights' for default short brief, 'full' for full report
+}
+
+interface BriefingResponse {
+  briefing: string;
+  generatedAt: string;
+  roleUsed: BriefingRole;
+  translated: boolean; // Whether translation was performed
+  modeUsed: BriefingMode;
+}
+
+interface ErrorResponse {
+  error: string;
+  code: string;
+  retryAfter?: number;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   POST Handler
+   ───────────────────────────────────────────────────────────── */
+
+export async function POST(
+  request: NextRequest
+): Promise<NextResponse<BriefingResponse | ErrorResponse>> {
+  // Extract client IP
+  const ip =
+    request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
+    request.headers.get('x-real-ip') ||
+    'unknown';
+
+  // Rate limit check
+  const rateCheck = checkRateLimit(ip);
+  if (!rateCheck.allowed) {
+    return NextResponse.json(
+      {
+        error: 'Rate limit exceeded. Maximum 5 requests per minute.',
+        code: 'RATE_LIMITED',
+        retryAfter: Math.ceil(rateCheck.resetIn / 1000),
+      },
+      {
+        status: 429,
+        headers: {
+          'Retry-After': String(Math.ceil(rateCheck.resetIn / 1000)),
+          'X-RateLimit-Remaining': '0',
+          'X-RateLimit-Reset': String(Math.ceil(rateCheck.resetIn / 1000)),
+        },
+      }
+    );
+  }
+
+  // Parse request body
+  let body: BriefingRequestBody;
+  try {
+    body = (await request.json()) as BriefingRequestBody;
+  } catch {
+    return NextResponse.json(
+      { error: 'Invalid JSON in request body.', code: 'INVALID_BODY' },
+      { status: 400 }
+    );
+  }
+
+  if (!body.context) {
+    return NextResponse.json(
+      { error: 'Intelligence context is required.', code: 'MISSING_CONTEXT' },
+      { status: 400 }
+    );
+  }
+
+  // Determine role and mode
+  const role: BriefingRole = body.role ?? 'general';
+  const mode: BriefingMode = body.mode === 'full' ? 'full' : 'highlights';
+
+  // Fetch feed health to include in context for confidence annotation
+  let feedHealth; // We'll type this as any since it's an optional addition
+  try {
+    const feedHealthResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/feed-health`, {
+      method: 'GET',
+      headers: { 'Cache-Control': 'no-store' },
+    });
+    if (feedHealthResponse.ok) {
+      const feedHealthData = await feedHealthResponse.json();
+      // Transform to match our feedHealth interface
+      feedHealth = {
+        status: feedHealthData.status as 'operational' | 'degraded' | 'offline',
+        summary: {
+          totalFeeds: feedHealthData.summary.totalFeeds,
+          activeFeeds: feedHealthData.summary.activeFeeds,
+          totalRecords: feedHealthData.summary.totalRecords,
+          healthy: feedHealthData.summary.healthy,
+          stale: feedHealthData.summary.stale,
+          offline: feedHealthData.summary.offline,
+          idle: feedHealthData.summary.idle,
+        },
+      };
+    }
+  } catch (feedHealthError) {
+    console.warn('[BEACON AI] Failed to fetch feed health for briefing context:', feedHealthError);
+    // Continue without feed health
+  }
+
+  // Optional: Translate non-English items in the context before generating briefing
+  let translated = false;
+  let processedContext = body.context;
+  if (body.translateNonEnglish !== false && mode === 'full') { // Full reports may pre-translate; highlights keep latency low
+    try {
+      // Translate text fields in news items and threat events for full reports only.
+      // Highlights mode asks the briefing model to translate only relevant snippets inline.
+      const contextCopy = JSON.parse(JSON.stringify(body.context)); // Deep copy
+
+      // Add feed health to context
+      if (feedHealth) {
+        contextCopy.feedHealth = feedHealth;
+      }
+
+      // Translate news titles and descriptions
+      if (contextCopy.news && Array.isArray(contextCopy.news)) {
+        for (const item of contextCopy.news) {
+          if (item.title && typeof item.title === 'string') {
+            const translatedTitle = await translateToEnglish(item.title, 'auto');
+            if (translatedTitle !== item.title) {
+              item.title = translatedTitle;
+              translated = true;
+            }
+          }
+          if (item.description && typeof item.description === 'string') {
+            const translatedDesc = await translateToEnglish(item.description, 'auto');
+            if (translatedDesc !== item.description) {
+              item.description = translatedDesc;
+              translated = true;
+            }
+          }
+        }
+      }
+
+      // Translate threat event titles and descriptions
+      if (contextCopy.threats && Array.isArray(contextCopy.threats)) {
+        for (const threat of contextCopy.threats) {
+          if (threat.title && typeof threat.title === 'string') {
+            const translatedTitle = await translateToEnglish(threat.title, 'auto');
+            if (translatedTitle !== threat.title) {
+              threat.title = translatedTitle;
+              translated = true;
+            }
+          }
+          if (threat.description && typeof threat.description === 'string') {
+            const translatedDesc = await translateToEnglish(threat.description, 'auto');
+            if (translatedDesc !== threat.description) {
+              threat.description = translatedDesc;
+              translated = true;
+            }
+          }
+        }
+      }
+
+      processedContext = contextCopy;
+    } catch (translationError) {
+      console.warn('[BEACON AI] Translation failed, proceeding with original text:', translationError);
+      // Continue with original context if translation fails
+      processedContext = { ...body.context };
+      if (feedHealth) processedContext.feedHealth = feedHealth;
+    }
+  } else {
+    // Still add feed health even if not translating
+    processedContext = { ...body.context };
+    if (feedHealth) processedContext.feedHealth = feedHealth;
+  }
+
+  try {
+    // Generate briefing using the OpenRouter-only AI engine
+    const briefing = await generateBriefing(processedContext, role, mode);
     // Log briefing for backlog/trend tracking
     try {
-      const logDir = path.join('/var/log', 'beacon_briefs');
+      const logDir = path.join('/tmp', 'beacon_briefs');
       await fs.mkdir(logDir, { recursive: true });
       const logPath = path.join(logDir, 'briefs.log');
-      const timestamp = new Date().toISOString();
-      const hash = createHash('sha256')
-        .update(briefing + timestamp + role + mode)
-        .digest('hex')
-        .substring(0, 8);
       const logEntry = JSON.stringify({
-        timestamp,
+        timestamp: new Date().toISOString(),
         role,
         mode,
         briefing,
         translated,
-        id: hash,
-      }) + '
-';
+      }) + '\n';
       await fs.appendFile(logPath, logEntry, 'utf8');
-      // Optional: retain only last 500 entries
-      const data = await fs.readFile(logPath, 'utf8');
-      const lines = data.trim().split('
-').filter(Boolean);
-      if (lines.length > 500) {
-        const trimmed = lines.slice(-500).join('
-') + '
-';
-        await fs.writeFile(logPath, trimmed, 'utf8');
-      }
     } catch (logErr) {
-      console.warn('[BEACON AI] Failed to log briefing:', logErr);
-    }
-        role,
-        mode,
-        briefing,
-        translated,
-    console.log('[BEACON AI] Briefing generated, length:', briefing.length);
-    // Log briefing for backlog/trend tracking
-    try {
-      const logDir = path.join('/var/log', 'beacon_briefs');
-      await fs.mkdir(logDir, { recursive: true });
-      const logPath = path.join(logDir, 'briefs.log');
-      const timestamp = new Date().toISOString();
-      const hash = createHash('sha256')
-        .update(briefing + timestamp + role + mode)
-        .digest('hex')
-        .substring(0, 8);
-      const logEntry = JSON.stringify({
-        timestamp,
-        role,
-        mode,
-        briefing,
-        translated,
-        id: hash,
-      }) + '
-';
-      await fs.appendFile(logPath, logEntry, 'utf8');
-      // Optional: retain only last 500 entries
-      const data = await fs.readFile(logPath, 'utf8');
-      const lines = data.trim().split('
-').filter(Boolean);
-      if (lines.length > 500) {
-        const trimmed = lines.slice(-500).join('
-') + '
-';
-        await fs.writeFile(logPath, trimmed, 'utf8');
-      }
-    } catch (logErr) {
-      console.warn('[BEACON AI] Failed to log briefing:', logErr);
-    }
+      // Logging failure should not break the briefing response
       console.warn('[BEACON AI] Failed to log briefing:', logErr);
     }
 

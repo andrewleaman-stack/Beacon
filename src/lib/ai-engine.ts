@@ -66,6 +66,8 @@ export interface IntelligenceContext {
   threats: ThreatEvent[];
   cyberAlerts: CyberAlert[];
   timestamp: string;
+  /** Optional feed-health summary attached at briefing time for context enrichment. */
+  feedHealth?: unknown;
 }
 
 export type BriefingMode = 'highlights' | 'full';
