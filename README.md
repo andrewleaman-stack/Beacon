@@ -24,17 +24,22 @@ This repository is an active BEACON fork/customization of OSIRIS. The current go
 
 | Domain | Current sources / capability |
 |---|---|
-| Aviation | OpenSky/ADS-B style feeds, commercial/private/military layers |
-| Maritime | AIS-style vessel and chokepoint layers |
+| Aviation | OpenSky/ADS-B style flight feeds; satellite (TLE) tracking |
+| Maritime | AIS-style vessel and chokepoint layers; submarine cable fault tracking |
 | CCTV | Public camera feeds and stream status checks |
-| Seismic | USGS earthquake feed |
-| Fires | NASA FIRMS/EONET wildfire indicators |
-| Weather / space | NOAA/weather and space-weather indicators |
-| Cyber | CVE/malware/threat intelligence routes |
-| OSINT tools | DNS, WHOIS, IP, BGP, certificate, sanctions, GitHub, phone/MAC lookup routes |
-| Local / Beacon | OpenMHz/RF hooks, Redis cache option, AI briefing hooks |
+| Seismic / geo | USGS earthquakes, NWS tsunami alerts, USGS volcano alerts |
+| Fires | NASA FIRMS wildfire detections, NIFC fire perimeters, SPC storm reports |
+| Weather / space | NWS alerts, weather, air quality, radar, NOAA space-weather indicators |
+| Hazards / infrastructure | FEMA disasters, USGS stream gauges, power outages, NRC events, ICS/CISA advisories, EPA ECHO facilities, FRA rail incidents, PHMSA pipeline incidents |
+| Cyber | CVE, malware, and threat-intelligence routes |
+| OSINT tools | DNS, WHOIS, IP, BGP, certificate, Shodan, sanctions, breach/leak, GitHub, phone/MAC lookup, and a combined sweep |
+| News / intel | Live news, GDELT, conflict frontlines, region dossiers, sentinel watch, supply-chain (SCM) suppliers |
+| Markets | Market indicators feed |
+| AI briefings | Role-based AI briefings, analysis, and translation (OpenRouter primary, Gemini fallback) |
+| Entity graph | Entity expansion / link-analysis graph |
+| Local / Beacon | OpenMHz/RF scanner hooks, Redis cache option, ingest/stream SDK endpoints |
 
-Most feeds degrade gracefully when optional keys are missing.
+The dashboard exposes ~66 API routes across these domains. Most feeds degrade gracefully when optional keys are missing.
 
 ## Quick start
 
