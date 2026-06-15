@@ -179,8 +179,6 @@ export async function POST(
 
       // Add feed health to context
       if (feedHealth) {
-        // Since IntelligenceContext doesn't have feedHealth, we'll add it as an optional property
-        // @ts-ignore - Adding optional property for briefing context enrichment
         contextCopy.feedHealth = feedHealth;
       }
 
@@ -229,13 +227,11 @@ export async function POST(
       console.warn('[BEACON AI] Translation failed, proceeding with original text:', translationError);
       // Continue with original context if translation fails
       processedContext = { ...body.context };
-      // @ts-ignore - Adding optional property for briefing context enrichment
       if (feedHealth) processedContext.feedHealth = feedHealth;
     }
   } else {
     // Still add feed health even if not translating
     processedContext = { ...body.context };
-    // @ts-ignore - Adding optional property for briefing context enrichment
     if (feedHealth) processedContext.feedHealth = feedHealth;
   }
 

@@ -17,6 +17,8 @@ services:
       NODE_ENV: production
       PORT: "3000"
       HOSTNAME: 0.0.0.0
+    volumes:
+      - ./beacon_briefs:/var/log/beacon_briefs
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:
