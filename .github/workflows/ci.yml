@@ -49,6 +49,9 @@ jobs:
       - name: Radiation unit tests
         run: npm run test:radiation
 
+      - name: Port disruptions unit tests
+        run: npm run test:port-disruptions
+
       - name: Typecheck
         run: npm run typecheck
 
