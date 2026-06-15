@@ -242,6 +242,7 @@ export async function POST(
   try {
     // Generate briefing using the OpenRouter-only AI engine
     const briefing = await generateBriefing(processedContext, role, mode);
+    console.log('[BEACON AI] Briefing generated, length:', briefing.length);
     // Log briefing for backlog/trend tracking
     try {
       const logDir = path.join('/tmp', 'beacon_briefs');
