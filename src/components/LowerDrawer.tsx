@@ -135,6 +135,7 @@ export default function LowerDrawer({ data, activeLayers, backendStatus, mapView
       { key: 'weather', label: 'WEATHER', count: asArray(data.weather_events).length, latest: latestTimestamp(asArray(data.weather_events)), layer: activeLayers.weather, status: undefined as string | undefined, ageSeconds: null as number | null },
       { key: 'radiation', label: 'RADIATION', count: asArray(data.radiation).length, latest: latestTimestamp(asArray(data.radiation)), layer: activeLayers.radiation, status: undefined as string | undefined, ageSeconds: null as number | null },
       { key: 'port_disruptions', label: 'PORT DISRUPTIONS', count: asArray(data.port_disruptions).length, latest: latestTimestamp(asArray(data.port_disruptions)), layer: activeLayers.port_disruptions, status: undefined as string | undefined, ageSeconds: null as number | null },
+      { key: 'conflict_events', label: 'CONFLICT EVENTS', count: asArray(data.conflict_events).length, latest: latestTimestamp(asArray(data.conflict_events)), layer: activeLayers.conflict_events, status: undefined as string | undefined, ageSeconds: null as number | null },
     ];
 
     const activeFeedCount = feeds.filter(feed => feed.layer).length;

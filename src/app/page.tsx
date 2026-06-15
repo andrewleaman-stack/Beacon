@@ -158,6 +158,7 @@ export default function Dashboard() {
     weather: false,
     radiation: false,
     port_disruptions: false,
+    conflict_events: false,
     infrastructure: false,
     global_incidents: true,
     war_alerts: false,
@@ -479,6 +480,10 @@ export default function Dashboard() {
     if (activeLayers.port_disruptions && !layerFetchedRef.current.has('port_disruptions')) {
       fetchEndpoint('/api/port-disruptions', d => ({ port_disruptions: d.disruptions }));
       layerFetchedRef.current.add('port_disruptions');
+    }
+    if (activeLayers.conflict_events && !layerFetchedRef.current.has('conflict_events')) {
+      fetchEndpoint('/api/conflict-events', d => ({ conflict_events: d.events }));
+      layerFetchedRef.current.add('conflict_events');
     }
     // Live News
     if (activeLayers.live_news && !layerFetchedRef.current.has('live_news')) {
