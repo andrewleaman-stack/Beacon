@@ -92,6 +92,23 @@ test('buildSituations ranks by score and carries member events for grounding', (
   assert.ok(situations[0].score > situations[1].score);
 });
 
+test('a high-volume single feed does not outrank a corroborated multi-feed situation', () => {
+  const now = new Date(T).getTime();
+  // 200 elevated fire pixels in one place, one feed
+  const fireSwarm = Array.from({ length: 200 }, (_, i) =>
+    ev({ id: `f${i}`, lat: 34 + (i % 10) * 0.01, lng: -118 + (i % 10) * 0.01, source: 'FIRMS Fires', severity: 'elevated' }));
+  // 3 different feeds corroborating at another place, high severity
+  const corroborated = [
+    ev({ id: 'q', lat: 14.6, lng: 121.0, source: 'Quakes', severity: 'high' }),
+    ev({ id: 'p', lat: 14.62, lng: 121.02, source: 'PortWatch', severity: 'high' }),
+    ev({ id: 'c', lat: 14.59, lng: 120.99, source: 'Conflict', severity: 'critical' }),
+  ];
+  const situations = buildSituations([...fireSwarm, ...corroborated], { now });
+  // The corroborated 3-feed cluster should rank above the 200-pixel fire swarm
+  assert.equal(situations[0].sourceCount, 3);
+  assert.ok(situations[0].score > situations.find((s) => s.sourceCount === 1).score);
+});
+
 test('buildSituations honors the limit', () => {
   const events = Array.from({ length: 10 }, (_, i) => ev({ id: `x${i}`, lat: i * 20 - 90, lng: 0 }));
   assert.equal(buildSituations(events, { limit: 3 }).length, 3);

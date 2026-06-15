@@ -110,10 +110,18 @@ const SEVERITY_RANK = ['low', 'elevated', 'high', 'critical'];
  */
 export function scoreSituation(cluster, { now = Date.now(), halfLifeHours = 48 } = {}) {
   const events = cluster.events || [];
-  const severity = events.reduce((sum, e) => sum + severityWeight(e.severity), 0);
-  const sources = new Set(events.map((e) => e.source).filter(Boolean));
-  const diversity = sources.size;
-  const sizeFactor = Math.log2(events.length + 1);
+  // Severity is summed by *distinct source* (each feed contributes only its
+  // peak severity), so one high-volume feed (e.g. hundreds of fire pixels)
+  // can't inflate the score. Real significance = several feeds corroborating
+  // and/or a high-severity event — not raw event count.
+  const peakBySource = {};
+  for (const e of events) {
+    const w = severityWeight(e.severity);
+    if (!peakBySource[e.source] || w > peakBySource[e.source]) peakBySource[e.source] = w;
+  }
+  const severity = Object.values(peakBySource).reduce((a, b) => a + b, 0);
+  const diversity = Object.keys(peakBySource).length;
+  const sizeFactor = Math.log2(events.length + 1); // small, damped contribution
   const ageHours = cluster.lastMs == null ? halfLifeHours : Math.max(0, (now - cluster.lastMs) / 3_600_000);
   const recency = Math.pow(0.5, ageHours / halfLifeHours); // 1.0 now → 0.5 at half-life
   const raw = (severity + diversity * 3 + sizeFactor) * recency;
