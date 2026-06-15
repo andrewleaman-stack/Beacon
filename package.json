@@ -12,6 +12,7 @@
     "test:conflict-events": "node --test scripts/conflict-events.test.mjs",
     "test:radiation": "node --test scripts/radiation.test.mjs",
     "test:port-disruptions": "node --test scripts/port-disruptions.test.mjs",
+    "test:situations": "node --test scripts/situations.test.mjs",
     "test:live-feeds": "node --test scripts/live-feeds.test.mjs",
     "test:credentialed-feeds": "node --test scripts/credentialed-feeds.test.mjs",
     "test:hazard-feeds": "node --test scripts/hazard-feeds.test.mjs",
