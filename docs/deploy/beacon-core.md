@@ -46,6 +46,21 @@ cd /srv/apps/beacon
 git pull --ff-only
 ```
 
+## Briefing backlog volume (one-time)
+
+The compose file mounts `./beacon_briefs` → `/var/log/beacon_briefs` and sets
+`BEACON_BRIEF_LOG_DIR` to it so the AI briefing backlog (`/api/ai/briefings`)
+survives container restarts. The container runs as uid `1001`, so the host
+directory must be writable by that uid:
+
+```bash
+mkdir -p /srv/apps/beacon/beacon_briefs
+sudo chown 1001:65533 /srv/apps/beacon/beacon_briefs
+```
+
+Without this, the app falls back to ephemeral `/tmp` and the backlog is lost on
+restart (it still works within a single container lifetime).
+
 ## Environment
 
 BEACON runs keyless for many feeds. Optional API keys can be added later.
