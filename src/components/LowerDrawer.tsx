@@ -2,9 +2,9 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Activity, AlertTriangle, ChevronDown, ChevronUp, Database, Radio, ShieldAlert, Wifi } from 'lucide-react';
+import { Activity, AlertTriangle, ChevronDown, ChevronUp, Crosshair, Database, Loader2, Radio, RefreshCw, ShieldAlert, Wifi } from 'lucide-react';
 
-type DrawerTab = 'feed' | 'health' | 'raw' | 'alerts';
+type DrawerTab = 'feed' | 'situations' | 'health' | 'raw' | 'alerts';
 
 interface LowerDrawerProps {
   data: Record<string, unknown>;
@@ -13,6 +13,22 @@ interface LowerDrawerProps {
   mapView: { zoom: number; latitude: number };
   open: boolean;
   onToggle: () => void;
+  onFocusLocation?: (lat: number, lng: number) => void;
+}
+
+interface Situation {
+  id: string;
+  title: string;
+  country: string;
+  centroid: { lat: number; lng: number };
+  score: number;
+  topSeverity: 'low' | 'elevated' | 'high' | 'critical';
+  eventCount: number;
+  sourceCount: number;
+  sources: string[];
+  firstTime: string | null;
+  lastTime: string | null;
+  events: Array<{ title?: string; source?: string; severity?: string }>;
 }
 
 interface FeedHealthSnapshot {
@@ -99,9 +115,56 @@ function eventTone(severity: string): string {
   return 'border-[var(--cyan-primary)]/20 bg-[var(--cyan-primary)]/5 text-white/70';
 }
 
-export default function LowerDrawer({ data, activeLayers, backendStatus, mapView, open, onToggle }: LowerDrawerProps) {
+function sevColor(severity: string): string {
+  if (severity === 'critical') return '#FF3D3D';
+  if (severity === 'high') return '#FF9500';
+  if (severity === 'elevated') return '#FFD700';
+  return '#00E676';
+}
+
+function placeLabel(country: string, centroid: { lat: number; lng: number }): string {
+  if (country) return country;
+  const { lat, lng } = centroid;
+  return `${Math.abs(lat).toFixed(1)}°${lat >= 0 ? 'N' : 'S'}, ${Math.abs(lng).toFixed(1)}°${lng >= 0 ? 'E' : 'W'}`;
+}
+
+function relTime(iso: string | null): string {
+  if (!iso) return '—';
+  const ms = Date.now() - new Date(iso).getTime();
+  if (!Number.isFinite(ms)) return '—';
+  const mins = Math.round(ms / 60000);
+  if (mins < 60) return `${Math.max(0, mins)}m ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 48) return `${hrs}h ago`;
+  return `${Math.round(hrs / 24)}d ago`;
+}
+
+export default function LowerDrawer({ data, activeLayers, backendStatus, mapView, open, onToggle, onFocusLocation }: LowerDrawerProps) {
   const [tab, setTab] = useState<DrawerTab>('feed');
   const [feedHealth, setFeedHealth] = useState<FeedHealthSnapshot | null>(null);
+  const [situations, setSituations] = useState<Situation[] | null>(null);
+  const [situationsLoading, setSituationsLoading] = useState(false);
+
+  // Situations fusion is expensive (fans out to ~10 feeds), so fetch lazily —
+  // only when the tab is opened, and on manual refresh. No polling, no LLM.
+  const loadSituations = useMemo(() => async () => {
+    setSituationsLoading(true);
+    try {
+      const res = await fetch('/api/situations?limit=12', { cache: 'no-store' });
+      if (res.ok) {
+        const payload = await res.json();
+        setSituations(Array.isArray(payload.situations) ? payload.situations : []);
+      }
+    } catch (error) {
+      console.warn('[BEACON] Situations fetch failed:', error instanceof Error ? error.message : error);
+    } finally {
+      setSituationsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (open && tab === 'situations' && situations === null && !situationsLoading) loadSituations();
+  }, [open, tab, situations, situationsLoading, loadSituations]);
 
   useEffect(() => {
     if (!open) return;
@@ -191,6 +254,7 @@ export default function LowerDrawer({ data, activeLayers, backendStatus, mapView
 
   const tabs: { id: DrawerTab; label: string; icon: typeof Activity; badge?: string }[] = [
     { id: 'feed', label: 'FEED CONSOLE', icon: Radio, badge: shortNumber(totalRecords) },
+    { id: 'situations', label: 'SITUATIONS', icon: Crosshair, badge: situations ? String(situations.length) : '·' },
     { id: 'health', label: 'HEALTH', icon: Wifi, badge: operationalStatus.toUpperCase() },
     { id: 'raw', label: 'OPS EVENTS', icon: Database, badge: String(feedHealth?.events.length ?? model.rawEntries.length) },
     { id: 'alerts', label: 'WATCHLIST', icon: ShieldAlert, badge: String(model.alerts.length) },
@@ -254,6 +318,74 @@ export default function LowerDrawer({ data, activeLayers, backendStatus, mapView
                           <div className="mt-2 text-[8px] font-mono text-white/40">LAST EVENT {feed.latest}{feed.ageSeconds != null ? ` · ${Math.round(feed.ageSeconds / 60)}M AGO` : ''}</div>
                         </div>
                       ))}
+                    </div>
+                  )}
+
+                  {tab === 'situations' && (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between mb-1">
+                        <div>
+                          <div className="text-[10px] font-mono tracking-widest text-[var(--cyan-primary)]">ACTIVE SITUATIONS</div>
+                          <div className="text-[8px] font-mono text-white/40">Cross-feed fusion · ranked by significance · click to focus map</div>
+                        </div>
+                        <button
+                          onClick={loadSituations}
+                          disabled={situationsLoading}
+                          className="flex items-center gap-1.5 rounded border border-white/10 bg-black/30 px-2.5 py-1.5 text-[8px] font-mono tracking-wider text-white/60 hover:text-[var(--cyan-primary)] hover:border-[var(--cyan-primary)]/30 transition-colors disabled:opacity-50"
+                        >
+                          {situationsLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                          REFRESH
+                        </button>
+                      </div>
+
+                      {situationsLoading && situations === null ? (
+                        <div className="flex items-center justify-center gap-2 py-10 text-[10px] font-mono text-white/45">
+                          <Loader2 className="w-4 h-4 animate-spin text-[var(--cyan-primary)]" /> FUSING FEEDS…
+                        </div>
+                      ) : !situations || situations.length === 0 ? (
+                        <div className="rounded border border-white/10 bg-white/[0.03] p-6 text-center text-[10px] font-mono text-white/40">
+                          NO ACTIVE SITUATIONS — feeds quiet or still loading.
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+                          {situations.map((s, i) => {
+                            const color = sevColor(s.topSeverity);
+                            return (
+                              <button
+                                key={s.id}
+                                onClick={() => onFocusLocation?.(s.centroid.lat, s.centroid.lng)}
+                                className="group relative text-left rounded border border-white/10 bg-white/[0.02] hover:bg-white/[0.05] hover:border-white/20 transition-all overflow-hidden pl-3.5 pr-3 py-2.5"
+                              >
+                                <span className="absolute left-0 top-0 bottom-0 w-[3px]" style={{ background: color, boxShadow: `0 0 10px ${color}66` }} />
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="min-w-0">
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-[9px] font-mono text-white/35 tabular-nums">#{i + 1}</span>
+                                      <span className="text-[12px] font-semibold text-white/90 truncate">{placeLabel(s.country, s.centroid)}</span>
+                                      <span className="text-[8px] font-mono px-1.5 py-0.5 rounded uppercase tracking-wider" style={{ color, background: `${color}1a`, border: `1px solid ${color}40` }}>{s.topSeverity}</span>
+                                    </div>
+                                    <div className="mt-1 text-[9px] font-mono text-white/50">
+                                      {s.eventCount} event{s.eventCount === 1 ? '' : 's'} · {s.sourceCount} feed{s.sourceCount === 1 ? '' : 's'} · {relTime(s.lastTime)}
+                                    </div>
+                                  </div>
+                                  <div className="flex flex-col items-end flex-shrink-0">
+                                    <span className="text-[7px] font-mono text-white/30 tracking-widest">SCORE</span>
+                                    <span className="text-[15px] font-mono font-bold tabular-nums" style={{ color }}>{Math.round(s.score)}</span>
+                                  </div>
+                                </div>
+                                <div className="mt-2 flex flex-wrap gap-1">
+                                  {s.sources.slice(0, 5).map(src => (
+                                    <span key={src} className="text-[7px] font-mono px-1.5 py-0.5 rounded bg-[var(--cyan-primary)]/10 border border-[var(--cyan-primary)]/20 text-[var(--cyan-primary)]/90 tracking-wide">{src}</span>
+                                  ))}
+                                </div>
+                                <span className="absolute right-2.5 bottom-2 opacity-0 group-hover:opacity-60 transition-opacity">
+                                  <Crosshair className="w-3.5 h-3.5 text-[var(--cyan-primary)]" />
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                   )}
 
