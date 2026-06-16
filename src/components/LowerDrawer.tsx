@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
+import { buildSituations, eventsFromDashboardData } from '@/lib/situations.mjs';
 import { Activity, AlertTriangle, ChevronDown, ChevronUp, Crosshair, Database, Loader2, Radio, RefreshCw, ShieldAlert, Wifi } from 'lucide-react';
 
 type DrawerTab = 'feed' | 'situations' | 'health' | 'raw' | 'alerts';
@@ -142,29 +143,59 @@ function relTime(iso: string | null): string {
 export default function LowerDrawer({ data, activeLayers, backendStatus, mapView, open, onToggle, onFocusLocation }: LowerDrawerProps) {
   const [tab, setTab] = useState<DrawerTab>('feed');
   const [feedHealth, setFeedHealth] = useState<FeedHealthSnapshot | null>(null);
-  const [situations, setSituations] = useState<Situation[] | null>(null);
-  const [situationsLoading, setSituationsLoading] = useState(false);
+  // Situations are computed INSTANTLY client-side from the feeds the dashboard
+  // has already loaded — no fetch, no LLM. DEEP SCAN optionally runs the server
+  // fan-out (/api/situations) for full coverage beyond the loaded layers.
+  const clientSituations = useMemo(
+    () => buildSituations(eventsFromDashboardData(data), { limit: 12 }) as Situation[],
+    [data],
+  );
+  const [deepSituations, setDeepSituations] = useState<Situation[] | null>(null);
+  const [deepLoading, setDeepLoading] = useState(false);
+  const displaySituations = deepSituations ?? clientSituations;
 
-  // Situations fusion is expensive (fans out to ~10 feeds), so fetch lazily —
-  // only when the tab is opened, and on manual refresh. No polling, no LLM.
-  const loadSituations = useMemo(() => async () => {
-    setSituationsLoading(true);
+  const runDeepScan = useCallback(async () => {
+    setDeepLoading(true);
     try {
       const res = await fetch('/api/situations?limit=12', { cache: 'no-store' });
       if (res.ok) {
         const payload = await res.json();
-        setSituations(Array.isArray(payload.situations) ? payload.situations : []);
+        setDeepSituations(Array.isArray(payload.situations) ? payload.situations : []);
       }
     } catch (error) {
-      console.warn('[BEACON] Situations fetch failed:', error instanceof Error ? error.message : error);
+      console.warn('[BEACON] Deep scan failed:', error instanceof Error ? error.message : error);
     } finally {
-      setSituationsLoading(false);
+      setDeepLoading(false);
     }
   }, []);
 
+  // Reverse-geocode the top situations that lack a country, for human-readable
+  // place names. Keyless (Nominatim), cached by rounded centroid, top 6 only.
+  const [placeNames, setPlaceNames] = useState<Record<string, string>>({});
+  const geocodeCache = useRef<Record<string, string>>({});
   useEffect(() => {
-    if (open && tab === 'situations' && situations === null && !situationsLoading) loadSituations();
-  }, [open, tab, situations, situationsLoading, loadSituations]);
+    if (!open || tab !== 'situations') return;
+    let cancelled = false;
+    (async () => {
+      for (const s of displaySituations.slice(0, 4)) {
+        if (cancelled) break;
+        if (s.country) continue;
+        const key = `${s.centroid.lat.toFixed(1)},${s.centroid.lng.toFixed(1)}`;
+        if (geocodeCache.current[key]) { setPlaceNames((p) => ({ ...p, [s.id]: geocodeCache.current[key] })); continue; }
+        try {
+          const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${s.centroid.lat}&lon=${s.centroid.lng}&format=json&zoom=8&addressdetails=1`, { headers: { 'Accept-Language': 'en' } });
+          if (res.ok) {
+            const j = await res.json();
+            const a = j.address || {};
+            const name = [a.state || a.county || a.region || a.city, a.country].filter(Boolean).join(', ') || j.display_name?.split(',').slice(-2).join(',').trim();
+            if (name) { geocodeCache.current[key] = name; if (!cancelled) setPlaceNames((p) => ({ ...p, [s.id]: name })); }
+          }
+        } catch { /* offline / rate-limited — fall back to coords */ }
+        await new Promise((r) => setTimeout(r, 1200)); // Nominatim policy: ≤ 1 req/sec
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [open, tab, displaySituations]);
 
   useEffect(() => {
     if (!open) return;
@@ -254,7 +285,7 @@ export default function LowerDrawer({ data, activeLayers, backendStatus, mapView
 
   const tabs: { id: DrawerTab; label: string; icon: typeof Activity; badge?: string }[] = [
     { id: 'feed', label: 'FEED CONSOLE', icon: Radio, badge: shortNumber(totalRecords) },
-    { id: 'situations', label: 'SITUATIONS', icon: Crosshair, badge: situations ? String(situations.length) : '·' },
+    { id: 'situations', label: 'SITUATIONS', icon: Crosshair, badge: String(displaySituations.length) },
     { id: 'health', label: 'HEALTH', icon: Wifi, badge: operationalStatus.toUpperCase() },
     { id: 'raw', label: 'OPS EVENTS', icon: Database, badge: String(feedHealth?.events.length ?? model.rawEntries.length) },
     { id: 'alerts', label: 'WATCHLIST', icon: ShieldAlert, badge: String(model.alerts.length) },
@@ -326,29 +357,38 @@ export default function LowerDrawer({ data, activeLayers, backendStatus, mapView
                       <div className="flex items-center justify-between mb-1">
                         <div>
                           <div className="text-[10px] font-mono tracking-widest text-[var(--cyan-primary)]">ACTIVE SITUATIONS</div>
-                          <div className="text-[8px] font-mono text-white/40">Cross-feed fusion · ranked by significance · click to focus map</div>
+                          <div className="text-[8px] font-mono text-white/40">
+                            {deepSituations ? 'Deep scan · all feeds' : 'Live · fused from loaded feeds'} · ranked by significance · click to focus map
+                          </div>
                         </div>
-                        <button
-                          onClick={loadSituations}
-                          disabled={situationsLoading}
-                          className="flex items-center gap-1.5 rounded border border-white/10 bg-black/30 px-2.5 py-1.5 text-[8px] font-mono tracking-wider text-white/60 hover:text-[var(--cyan-primary)] hover:border-[var(--cyan-primary)]/30 transition-colors disabled:opacity-50"
-                        >
-                          {situationsLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
-                          REFRESH
-                        </button>
+                        <div className="flex items-center gap-1.5">
+                          {deepSituations && (
+                            <button
+                              onClick={() => setDeepSituations(null)}
+                              className="rounded border border-white/10 bg-black/30 px-2.5 py-1.5 text-[8px] font-mono tracking-wider text-white/60 hover:text-[var(--cyan-primary)] hover:border-[var(--cyan-primary)]/30 transition-colors"
+                            >
+                              LIVE
+                            </button>
+                          )}
+                          <button
+                            onClick={runDeepScan}
+                            disabled={deepLoading}
+                            title="Fan out to all server feeds for full coverage (slower)"
+                            className="flex items-center gap-1.5 rounded border border-white/10 bg-black/30 px-2.5 py-1.5 text-[8px] font-mono tracking-wider text-white/60 hover:text-[var(--cyan-primary)] hover:border-[var(--cyan-primary)]/30 transition-colors disabled:opacity-50"
+                          >
+                            {deepLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                            DEEP SCAN
+                          </button>
+                        </div>
                       </div>
 
-                      {situationsLoading && situations === null ? (
-                        <div className="flex items-center justify-center gap-2 py-10 text-[10px] font-mono text-white/45">
-                          <Loader2 className="w-4 h-4 animate-spin text-[var(--cyan-primary)]" /> FUSING FEEDS…
-                        </div>
-                      ) : !situations || situations.length === 0 ? (
+                      {displaySituations.length === 0 ? (
                         <div className="rounded border border-white/10 bg-white/[0.03] p-6 text-center text-[10px] font-mono text-white/40">
-                          NO ACTIVE SITUATIONS — feeds quiet or still loading.
+                          NO ACTIVE SITUATIONS — toggle map layers to load feeds, or run DEEP SCAN for full coverage.
                         </div>
                       ) : (
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
-                          {situations.map((s, i) => {
+                          {displaySituations.map((s, i) => {
                             const color = sevColor(s.topSeverity);
                             return (
                               <button
@@ -361,7 +401,7 @@ export default function LowerDrawer({ data, activeLayers, backendStatus, mapView
                                   <div className="min-w-0">
                                     <div className="flex items-center gap-2">
                                       <span className="text-[9px] font-mono text-white/35 tabular-nums">#{i + 1}</span>
-                                      <span className="text-[12px] font-semibold text-white/90 truncate">{placeLabel(s.country, s.centroid)}</span>
+                                      <span className="text-[12px] font-semibold text-white/90 truncate">{placeNames[s.id] || placeLabel(s.country, s.centroid)}</span>
                                       <span className="text-[8px] font-mono px-1.5 py-0.5 rounded uppercase tracking-wider" style={{ color, background: `${color}1a`, border: `1px solid ${color}40` }}>{s.topSeverity}</span>
                                     </div>
                                     <div className="mt-1 text-[9px] font-mono text-white/50">
