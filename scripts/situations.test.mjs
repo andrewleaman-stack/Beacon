@@ -9,6 +9,7 @@ import {
   clusterEvents,
   scoreSituation,
   buildSituations,
+  eventsFromDashboardData,
 } from '../src/lib/situations.mjs';
 
 const T = '2026-06-15T00:00:00Z';
@@ -107,6 +108,31 @@ test('a high-volume single feed does not outrank a corroborated multi-feed situa
   // The corroborated 3-feed cluster should rank above the 200-pixel fire swarm
   assert.equal(situations[0].sourceCount, 3);
   assert.ok(situations[0].score > situations.find((s) => s.sourceCount === 1).score);
+});
+
+test('eventsFromDashboardData maps loaded feeds to common events', () => {
+  const data = {
+    earthquakes: [
+      { id: 'q1', lat: 14.6, lng: 121.0, magnitude: 6.2, place: 'Luzon', time: '2026-06-15T00:00:00Z' },
+      { id: 'q2', lat: 35, lng: 139, magnitude: 2.1, place: 'micro' }, // below M4 -> dropped
+    ],
+    conflict_events: [{ id: 'c1', lat: 50.4, lng: 30.5, severity: 'high', title: 'clash', country: 'Ukraine', date: '2026-06-14T00:00:00Z' }],
+    port_disruptions: [{ id: 'p1', lat: -19.8, lng: 34.8, active: true, portName: 'Beira', country: 'Mozambique', toDate: '2026-06-13T00:00:00Z' }],
+    radiation: [{ id: 'r1', lat: 1, lng: 1, reading: 100 }], // not a situation feed -> ignored
+  };
+  const events = eventsFromDashboardData(data);
+  const sources = events.map((e) => e.source).sort();
+  assert.deepEqual(sources, ['Conflict', 'PortWatch', 'USGS Quakes']); // micro-quake + radiation excluded
+  const quake = events.find((e) => e.source === 'USGS Quakes');
+  assert.equal(quake.severity, 'critical'); // M6.2
+  assert.equal(quake.lat, 14.6);
+  const port = events.find((e) => e.source === 'PortWatch');
+  assert.equal(port.severity, 'high'); // active
+});
+
+test('eventsFromDashboardData tolerates empty/missing data', () => {
+  assert.deepEqual(eventsFromDashboardData(), []);
+  assert.deepEqual(eventsFromDashboardData({ earthquakes: 'nope' }), []);
 });
 
 test('buildSituations honors the limit', () => {

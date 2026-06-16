@@ -19,6 +19,81 @@
 
 const SEVERITY_WEIGHT = { low: 1, elevated: 2, high: 4, critical: 8 };
 const EARTH_RADIUS_KM = 6371;
+const SEV_ORDER = ['low', 'elevated', 'high', 'critical'];
+
+// Geolocated feeds the dashboard already loads into its `data` object, mapped
+// to common events so situations can be computed instantly client-side (no
+// extra fetch, no LLM). High-volume/background feeds (radiation, maritime) are
+// excluded so fusion stays meaningful. Severity heuristics mirror the server
+// /api/situations route.
+const DASHBOARD_FEEDS = [
+  { key: 'earthquakes', source: 'USGS Quakes', type: 'seismic', minSeverity: 'elevated',
+    sev: (e) => (e.magnitude >= 6 ? 'critical' : e.magnitude >= 5 ? 'high' : e.magnitude >= 4 ? 'elevated' : 'low') },
+  { key: 'conflict_events', source: 'Conflict', type: 'conflict',
+    sev: (e) => (SEV_ORDER.includes(e.severity) ? e.severity : 'elevated') },
+  { key: 'port_disruptions', source: 'PortWatch', type: 'maritime',
+    sev: (e) => (e.active ? 'high' : 'elevated') },
+  { key: 'gdelt', source: 'GDELT', type: 'geopolitical', sev: () => 'elevated' },
+  { key: 'fires', source: 'FIRMS Fires', type: 'fire', sev: () => 'elevated' },
+  { key: 'weather_events', source: 'Weather', type: 'weather', sev: () => 'elevated' },
+];
+
+function num(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+function pickLatLng(item) {
+  const lat = num(item.lat ?? item.latitude);
+  const lng = num(item.lng ?? item.lon ?? item.long ?? item.longitude);
+  if (lat == null || lng == null || Math.abs(lat) > 90 || Math.abs(lng) > 180 || (lat === 0 && lng === 0)) return null;
+  return { lat, lng };
+}
+
+function pickTime(item) {
+  const t = item.time ?? item.date ?? item.published ?? item.pubDate ?? item.timestamp
+    ?? item.updated_at ?? item.reportedAt ?? item.toDate ?? item.fetchedAt;
+  if (!t) return null;
+  const d = new Date(t);
+  return Number.isFinite(d.getTime()) ? d.toISOString() : null;
+}
+
+function pickTitle(item) {
+  return String(item.title || item.place || item.headline || item.eventName || item.portName
+    || item.name || item.label || 'Event').slice(0, 160);
+}
+
+/**
+ * Map the dashboard's already-loaded `data` object to common situation events.
+ * Only feeds present in `data` contribute, so the result reflects whatever the
+ * user has loaded — instant and zero-cost.
+ */
+export function eventsFromDashboardData(data = {}) {
+  const events = [];
+  for (const cfg of DASHBOARD_FEEDS) {
+    const items = Array.isArray(data[cfg.key]) ? data[cfg.key] : [];
+    const minRank = cfg.minSeverity ? SEV_ORDER.indexOf(cfg.minSeverity) : 0;
+    for (const item of items) {
+      if (!item || typeof item !== 'object') continue;
+      const coord = pickLatLng(item);
+      if (!coord) continue;
+      const severity = cfg.sev(item);
+      if (SEV_ORDER.indexOf(severity) < minRank) continue;
+      events.push({
+        id: `${cfg.source}-${item.id ?? item.event_id ?? `${coord.lat},${coord.lng}`}`,
+        source: cfg.source,
+        type: cfg.type,
+        title: pickTitle(item),
+        lat: coord.lat,
+        lng: coord.lng,
+        time: pickTime(item),
+        severity,
+        country: String(item.country || '').trim(),
+      });
+    }
+  }
+  return events;
+}
 
 export function severityWeight(severity) {
   return SEVERITY_WEIGHT[severity] || SEVERITY_WEIGHT.low;

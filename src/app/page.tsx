@@ -1269,7 +1269,7 @@ export default function Dashboard() {
       )}
 
       {/* ── Scale Bar (desktop) ── */}
-      <div className="desktop-only absolute bottom-[4.5rem] left-[20rem] z-[201] pointer-events-none">
+      <div className="desktop-only absolute bottom-[7rem] left-[20rem] z-[201] pointer-events-none">
         <ScaleBar zoom={mapView.zoom} latitude={mapView.latitude} />
       </div>
 
