@@ -867,7 +867,7 @@ export default function Dashboard() {
       {/* ── MAP VIEW CONTROLS (3D/2D + SATELLITE TOGGLE) ── */}
       <motion.div
         initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 3.5 }}
-        className="absolute bottom-[75px] md:bottom-6 left-3 md:left-[315px] z-[200] flex items-center gap-2 pointer-events-none"
+        className="absolute bottom-[75px] md:bottom-[44px] left-3 md:left-[315px] z-[200] flex items-center gap-2 pointer-events-none"
       >
         {/* 3D/2D Toggle */}
         <button
@@ -1003,6 +1003,7 @@ export default function Dashboard() {
           mapView={mapView}
           open={showLowerDrawer}
           onToggle={() => setShowLowerDrawer(p => !p)}
+          onFocusLocation={(lat, lng) => setFlyToLocation({ lat, lng, zoom: 5, ts: Date.now() })}
         />
       )}
 
