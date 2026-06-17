@@ -3,9 +3,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { buildSituations, eventsFromDashboardData } from '@/lib/situations.mjs';
-import { Activity, AlertTriangle, ChevronDown, ChevronUp, Crosshair, Database, Loader2, Radio, RefreshCw, ShieldAlert, Wifi } from 'lucide-react';
+import { Activity, AlertTriangle, ChevronDown, ChevronUp, Crosshair, Database, Loader2, Radio, RefreshCw, Send, ShieldAlert, Sparkles, Wifi } from 'lucide-react';
 
-type DrawerTab = 'feed' | 'situations' | 'health' | 'raw' | 'alerts';
+type DrawerTab = 'feed' | 'situations' | 'ask' | 'health' | 'raw' | 'alerts';
 
 interface LowerDrawerProps {
   data: Record<string, unknown>;
@@ -173,6 +173,35 @@ export default function LowerDrawer({ data, activeLayers, backendStatus, mapView
   // place names. Keyless (Nominatim), cached by rounded centroid, top 6 only.
   const [placeNames, setPlaceNames] = useState<Record<string, string>>({});
   const geocodeCache = useRef<Record<string, string>>({});
+
+  // Natural-language query — grounded in the situations the user is viewing.
+  // On-demand only (user submits); one free-model LLM call per question.
+  const [askQuestion, setAskQuestion] = useState('');
+  const [askAnswer, setAskAnswer] = useState<string | null>(null);
+  const [askLoading, setAskLoading] = useState(false);
+  const [askError, setAskError] = useState<string | null>(null);
+
+  const submitAsk = useCallback(async (q: string) => {
+    const question = q.trim();
+    if (!question || askLoading) return;
+    setAskLoading(true);
+    setAskError(null);
+    setAskAnswer(null);
+    try {
+      const res = await fetch('/api/ask', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question, situations: displaySituations }),
+      });
+      const payload = await res.json();
+      if (!res.ok) setAskError(payload.error || 'Query failed.');
+      else setAskAnswer(payload.answer || 'No answer returned.');
+    } catch (error) {
+      setAskError(error instanceof Error ? error.message : 'Query failed.');
+    } finally {
+      setAskLoading(false);
+    }
+  }, [askLoading, displaySituations]);
   useEffect(() => {
     if (!open || tab !== 'situations') return;
     let cancelled = false;
@@ -286,6 +315,7 @@ export default function LowerDrawer({ data, activeLayers, backendStatus, mapView
   const tabs: { id: DrawerTab; label: string; icon: typeof Activity; badge?: string }[] = [
     { id: 'feed', label: 'FEED CONSOLE', icon: Radio, badge: shortNumber(totalRecords) },
     { id: 'situations', label: 'SITUATIONS', icon: Crosshair, badge: String(displaySituations.length) },
+    { id: 'ask', label: 'ASK BEACON', icon: Sparkles, badge: 'AI' },
     { id: 'health', label: 'HEALTH', icon: Wifi, badge: operationalStatus.toUpperCase() },
     { id: 'raw', label: 'OPS EVENTS', icon: Database, badge: String(feedHealth?.events.length ?? model.rawEntries.length) },
     { id: 'alerts', label: 'WATCHLIST', icon: ShieldAlert, badge: String(model.alerts.length) },
@@ -425,6 +455,42 @@ export default function LowerDrawer({ data, activeLayers, backendStatus, mapView
                             );
                           })}
                         </div>
+                      )}
+                    </div>
+                  )}
+
+                  {tab === 'ask' && (
+                    <div className="flex flex-col gap-3 max-w-3xl">
+                      <div>
+                        <div className="text-[10px] font-mono tracking-widest text-[var(--cyan-primary)] flex items-center gap-1.5"><Sparkles className="w-3 h-3" /> ASK BEACON</div>
+                        <div className="text-[8px] font-mono text-white/40">Grounded in the {displaySituations.length} situation{displaySituations.length === 1 ? '' : 's'} currently loaded · answers cite feeds · nothing invented</div>
+                      </div>
+                      <form onSubmit={(e) => { e.preventDefault(); submitAsk(askQuestion); }} className="flex gap-2">
+                        <input
+                          value={askQuestion}
+                          onChange={(e) => setAskQuestion(e.target.value)}
+                          placeholder="e.g. What's the most serious situation right now?"
+                          className="flex-1 rounded border border-white/15 bg-black/40 px-3 py-2 text-[11px] font-mono text-white/90 placeholder:text-white/30 focus:outline-none focus:border-[var(--cyan-primary)]/50"
+                        />
+                        <button type="submit" disabled={askLoading || !askQuestion.trim()} className="flex items-center gap-1.5 rounded border border-[var(--cyan-primary)]/30 bg-[var(--cyan-primary)]/10 px-3 py-2 text-[9px] font-mono tracking-wider text-[var(--cyan-primary)] hover:bg-[var(--cyan-primary)]/20 transition-colors disabled:opacity-40">
+                          {askLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />} ASK
+                        </button>
+                      </form>
+                      {!askAnswer && !askLoading && !askError && (
+                        <div className="flex flex-wrap gap-1.5">
+                          {['What is the most serious situation right now?', 'Any conflict near a major port?', 'Summarize seismic activity.'].map(ex => (
+                            <button key={ex} onClick={() => { setAskQuestion(ex); submitAsk(ex); }} className="text-[8px] font-mono px-2 py-1 rounded border border-white/10 bg-white/[0.03] text-white/50 hover:text-[var(--cyan-primary)] hover:border-[var(--cyan-primary)]/30 transition-colors">{ex}</button>
+                          ))}
+                        </div>
+                      )}
+                      {askLoading && (
+                        <div className="flex items-center gap-2 py-6 text-[10px] font-mono text-white/45"><Loader2 className="w-4 h-4 animate-spin text-[var(--cyan-primary)]" /> ANALYZING SITUATIONS…</div>
+                      )}
+                      {askError && (
+                        <div className="rounded border border-[#FF9500]/30 bg-[#FF9500]/10 p-3 text-[10px] font-mono text-[#FFD6A0]">{askError}</div>
+                      )}
+                      {askAnswer && (
+                        <div className="rounded border border-[var(--cyan-primary)]/20 bg-[var(--cyan-primary)]/[0.04] p-3.5 text-[11px] leading-relaxed text-white/85 whitespace-pre-wrap">{askAnswer}</div>
                       )}
                     </div>
                   )}
