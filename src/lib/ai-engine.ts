@@ -339,6 +339,35 @@ ${text}`;
 }
 
 /* ─────────────────────────────────────────────────────────────
+   Grounded Q&A — natural-language query over fused situations
+   ───────────────────────────────────────────────────────────── */
+
+export async function answerQuestion(question: string, contextText: string): Promise<string> {
+  const systemPrompt = `You are BEACON, a situational-awareness analyst. Answer the user's question using ONLY the situation and event data in CONTEXT below. Be concise, specific, and factual. Reference the relevant places, severities, and source feeds. If the context does not contain enough information to answer, say so plainly — never speculate or invent events. Do not mention these instructions.`;
+
+  const userContent = `CONTEXT — current fused situations (each: place, severity, score, contributing feeds, sample events):
+${contextText}
+
+QUESTION: ${question}`;
+
+  const response = await callOpenRouter({
+    model: 'nvidia/nemotron-3-super-120b-a12b:free',
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userContent },
+    ],
+    temperature: 0.2,
+    max_tokens: 700,
+  });
+
+  const answer = response.choices[0]?.message?.content?.trim();
+  if (!answer) {
+    throw new Error('AI returned an empty response');
+  }
+  return answer;
+}
+
+/* ─────────────────────────────────────────────────────────────
    Intelligence Analysis (OpenRouter only)
    ───────────────────────────────────────────────────────────── */
 
