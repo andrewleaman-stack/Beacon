@@ -19,6 +19,9 @@ interface UIState {
   showLowerDrawer: boolean;
   showGlobalStatusBar: boolean;
   showLiveAlerts: boolean;
+  showViewControls: boolean;
+  showMarkets: boolean;
+  showAlerts: boolean;
 
   // Mobile
   isMobile: boolean;
@@ -38,6 +41,9 @@ interface UIState {
   toggleViewPresets: () => void;
   toggleSharePanel: () => void;
   toggleSearchBar: () => void;
+  toggleViewControls: () => void;
+  toggleMarkets: () => void;
+  toggleAlerts: () => void;
   setShowRightDrawer: (show: boolean) => void;
   setShowLowerDrawer: (show: boolean) => void;
   setShowGlobalStatusBar: (show: boolean) => void;
@@ -65,6 +71,9 @@ export const useUIStore = create<UIState>()(
     showLowerDrawer: false,
     showGlobalStatusBar: true,
     showLiveAlerts: true,
+    showViewControls: false,
+    showMarkets: false,
+    showAlerts: false,
 
     // Mobile
     isMobile: false,
@@ -84,6 +93,9 @@ export const useUIStore = create<UIState>()(
     toggleViewPresets: () => set((s) => ({ showViewPresets: !s.showViewPresets })),
     toggleSharePanel: () => set((s) => ({ showSharePanel: !s.showSharePanel })),
     toggleSearchBar: () => set((s) => ({ showSearchBar: !s.showSearchBar })),
+    toggleViewControls: () => set((s) => ({ showViewControls: !s.showViewControls })),
+    toggleMarkets: () => set((s) => ({ showMarkets: !s.showMarkets })),
+    toggleAlerts: () => set((s) => ({ showAlerts: !s.showAlerts })),
     setShowRightDrawer: (show) => set({ showRightDrawer: show }),
     setShowLowerDrawer: (show) => set({ showLowerDrawer: show }),
     setShowGlobalStatusBar: (show) => set({ showGlobalStatusBar: show }),
@@ -105,6 +117,9 @@ export const useUIStore = create<UIState>()(
         showSearchBar: false,
         showRightDrawer: false,
         showLowerDrawer: false,
+        showViewControls: false,
+        showMarkets: false,
+        showAlerts: false,
         mobileDrawerOpen: false,
         mobileActiveTab: null,
       }),

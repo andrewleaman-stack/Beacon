@@ -7,6 +7,11 @@ import { Layers, BarChart3, Newspaper, Search, X, Globe, MapPinned, Radar, Satel
 import { getCachedLabel, setCachedLabel } from '@/lib/geocode-cache';
 import { deduplicatedFetchEndpoint } from '@/lib/fetch-dedupe';
 import type { LayerKey } from '@/types/feeds';
+import { useUIStore } from '@/stores';
+import { useMapStore } from '@/stores';
+import { useLayerStore } from '@/stores';
+import { useDashboardSettingsStore } from '@/stores';
+import { useIntelligenceContext, useEarthquakes, useNews, useMarkets, useSpaceWeather } from '@/hooks/use-feeds';
 import IntelFeed from '@/components/IntelFeed';
 import MarketsPanel from '@/components/MarketsPanel';
 import ScmPanel from '@/components/ScmPanel';
@@ -34,7 +39,6 @@ const LayerPanel = dynamic(() => import('@/components/LayerPanel'));
 const CameraViewer = dynamic(() => import('@/components/CameraViewer'));
 const OsintPanel = dynamic(() => import('@/components/OsintPanel'));
 const EntityGraphPanel = dynamic(() => import('@/components/EntityGraphPanel'));
-
 function useIsMobile() {
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
@@ -54,6 +58,7 @@ function useIsMobile() {
   }, []);
   return isMobile;
 }
+
 const UptimeClock = () => {
   const [uptime, setUptime] = useState('00:00:00');
   const startTime = useRef(0);
@@ -97,87 +102,129 @@ function getYouTubeWatchUrl(url: string): string {
 }
 
 export default function Dashboard() {
-  const dataRef = useRef<any>({});
-  const [dataVersion, setDataVersion] = useState(0);
-  const data = dataRef.current;
+  // Zustand stores
+  const {
+    showLayerPanel,
+    showCameraViewer,
+    showOsintPanel,
+    showEntityGraph: uiShowEntityGraph,
+    showAIBriefing,
+    showKeyboardShortcuts,
+    showViewPresets,
+    showSharePanel,
+    showSearchBar,
+    showRightDrawer: uiShowRightDrawer,
+    showLowerDrawer: uiShowLowerDrawer,
+    showGlobalStatusBar,
+    showLiveAlerts,
+    isMobile: uiIsMobile,
+    mobileDrawerOpen,
+    mobileActiveTab,
+    showSplash: uiShowSplash,
+    showViewControls,
+    showMarkets,
+    showAlerts,
+    toggleLayerPanel,
+    toggleCameraViewer,
+    toggleOsintPanel,
+    toggleEntityGraph,
+    toggleAIBriefing,
+    toggleKeyboardShortcuts,
+    toggleViewPresets,
+    toggleSharePanel,
+    toggleSearchBar,
+    toggleViewControls,
+    toggleMarkets,
+    toggleAlerts,
+    setShowRightDrawer,
+    setShowLowerDrawer,
+    setShowGlobalStatusBar,
+    setShowLiveAlerts,
+    setIsMobile,
+    setMobileDrawerOpen,
+    setMobileActiveTab,
+    setShowSplash,
+    closeAllPanels,
+  } = useUIStore();
 
-  const [backendStatus, setBackendStatus] = useState<'connecting' | 'connected' | 'error'>('connecting');
-  const [mapView, setMapView] = useState({ zoom: 2.5, latitude: 20, longitude: 0 });
-  const [flyToLocation, setFlyToLocation] = useState<{ lat: number; lng: number; zoom?: number; ts: number } | null>(null);
+  const {
+    latitude,
+    longitude,
+    zoom,
+    projection,
+    mapStyle: mapStoreStyle,
+    visualScale,
+    flyToLocation: mapFlyToLocation,
+    setMapView,
+    setFlyToLocation,
+    resetMapView,
+  } = useMapStore();
+
+  const {
+    activeLayers,
+    layerFetched,
+    backendStatus,
+    dataVersion,
+    toggleLayer,
+    setLayer,
+    setLayers,
+    markLayerFetched,
+    isLayerFetched,
+    clearLayerFetched,
+    setBackendStatus,
+    incrementDataVersion,
+  } = useLayerStore();
+
+  const {
+    viewSettings,
+    homeLocation,
+    setViewSettings,
+    setHomeLocation,
+    persistViewSettings,
+    persistHomeLocation,
+  } = useDashboardSettingsStore();
+
+  // TanStack Query hooks
+  const earthquakes = useEarthquakes();
+  const news = useNews();
+  const markets = useMarkets();
+  const spaceWeather = useSpaceWeather();
+
+  // Derived state from queries
+  const data = useMemo(() => ({
+    earthquakes: earthquakes.data || [],
+    news: news.data || [],
+    markets: markets.data,
+    spaceWeather: spaceWeather.data,
+  }), [earthquakes.data, news.data, markets.data, spaceWeather.data]);
+
+  // Local refs/state not in stores
+  const dataRef = useRef<any>({});
   const [globalStats, setGlobalStats] = useState<any>(null);
   const mouseCoordsRef = useRef<{ lat: number; lng: number } | null>(null);
   const coordsDisplayRef = useRef<HTMLDivElement>(null);
   const [locationLabel, setLocationLabel] = useState('');
   const [regionDossier, setRegionDossier] = useState<any>(null);
   const [dossierLoading, setDossierLoading] = useState(false);
-  const [showSplash, setShowSplash] = useState(true);
   const [activeCamera, setActiveCamera] = useState<any>(null);
-  const [spaceWeather, setSpaceWeather] = useState<any>(null);
-  const [showLayers, setShowLayers] = useState(true);
-  const [showMarkets, setShowMarkets] = useState(false);
-  const [showAlerts, setShowAlerts] = useState(false);
-  const [showScmPanel, setShowScmPanel] = useState(true);
-  const [showIntel, setShowIntel] = useState(false);
-  const [showEntityGraph, setShowEntityGraph] = useState(false);
-  const [showAIBrief, setShowAIBrief] = useState(false);
-  const [showLowerDrawer, setShowLowerDrawer] = useState(true);
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  const [mobilePanel, setMobilePanel] = useState<'layers'|'markets'|'intel'|'search'|'recon'|null>(null);
-  const [mapProjection, setMapProjection] = useState<'globe'|'mercator'>('globe');
-  const [mapStyle, setMapStyle] = useState<'dark'|'satellite'>('dark');
   const [sweepData, setSweepData] = useState<any>(null);
   const [scanTargets, setScanTargets] = useState<any[]>([]);
   const [entityGraphTarget, setEntityGraphTarget] = useState<{ type: string; id: string; label?: string; properties?: Record<string, any> } | null>(null);
-  const [demoMode, setDemoMode] = useState(false);
-  const [showViewControls, setShowViewControls] = useState(false);
-  const [viewSettings, setViewSettings] = useState(() => normalizeDashboardViewSettings(DEFAULT_DASHBOARD_VIEW_SETTINGS));
-  const [homeLocation, setHomeLocation] = useState(() => normalizeHomeLocation(DEFAULT_HOME_LOCATION));
-
-  // Right drawer state
-  const [showRightDrawer, setShowRightDrawer] = useState(false);
   const [rightDrawerEntity, setRightDrawerEntity] = useState<{ type: 'aircraft'|'vessel'|'ip'|'country'|'cctv'|'earthquake'|'gdelt'|'news'|'infrastructure'; id: string; label: string; properties?: Record<string, any>; coords?: { lat: number; lng: number } } | null>(null);
   const [rightDrawerRecon, setRightDrawerRecon] = useState<any[]>([]);
-
-  const isMobile = useIsMobile();
-  const startTime = useRef(Date.now());
-  // Geocode cache now imported from @/lib/geocode-cache (TTL/LRU)
-  const geocodeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastGeocodedPos = useRef<{ lat: number; lng: number } | null>(null);
-
-  // \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 DEFAULT: Most layers OFF \u2014 fast initial load \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-    const initialLayers: Record<LayerKey, boolean> = {
-      flights: false,
-      military: false,
-      jets: false,
-      'private-fl': false,
-      maritime: true,
-      satellites: false,
-      balloons: false,
-      cctv: true,
-      'live-news': true,
-      'news-intel': true,
-      earthquakes: true,
-      fires: false,
-      weather: false,
-      radiation: false,
-      port_disruptions: false,
-      conflict_events: false,
-      infrastructure: false,
-      global_incidents: true,
-      war_alerts: false,
-      gps_jamming: false,
-      day_night: true,
-      cables: true,
-      sdk_sea: true,
-      sdk_air: true,
-      sdk_naval: true,
-      malware: false,
-    } as const;
-
-    const [activeLayers, setActiveLayers] = useState<Record<LayerKey, boolean>>(initialLayers);
   const [liveFeedUrl, setLiveFeedUrl] = useState<string | null>(null);
   const [liveFeedName, setLiveFeedName] = useState('');
   const [liveFeedEmbedAllowed, setLiveFeedEmbedAllowed] = useState(true);
+  const [demoMode, setDemoMode] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  const startTime = useRef(Date.now());
+  const geocodeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastGeocodedPos = useRef<{ lat: number; lng: number } | null>(null);
+
+  // Sync store state to local refs for compatibility
+  useEffect(() => { dataRef.current = data; }, [data]);
+  useEffect(() => { incrementDataVersion(); }, [dataVersion]);
 
   // Splash screen
   useEffect(() => {
@@ -222,12 +269,12 @@ export default function Dashboard() {
     const zoom = parseFloat(p.get('zoom') || '');
     if (!isNaN(lat) && !isNaN(lon)) {
       setFlyToLocation({ lat, lng: lon, zoom: !isNaN(zoom) ? zoom : undefined, ts: Date.now() });
-      setMapView(v => ({ ...v, latitude: lat, longitude: lon, zoom: !isNaN(zoom) ? zoom : v.zoom }));
+      setMapView({ latitude: lat, longitude: lon, zoom: !isNaN(zoom) ? zoom : zoom });
     }
     const layers = p.get('layers');
     if (layers) {
       const active = layers.split(',');
-      setActiveLayers(prev => {
+      setLayers(prev => {
         const next = { ...prev };
         Object.keys(next).forEach(k => { (next as any)[k] = active.includes(k); });
         return next;
@@ -242,15 +289,15 @@ export default function Dashboard() {
     if (urlTimer.current) clearTimeout(urlTimer.current);
     urlTimer.current = setTimeout(() => {
       const p = new URLSearchParams();
-      p.set('lat', (mapView.latitude ?? 20).toFixed(4));
-      p.set('lon', (mapView.longitude ?? 0).toFixed(4));
-      p.set('zoom', mapView.zoom.toFixed(2));
+      p.set('lat', (latitude ?? 20).toFixed(4));
+      p.set('lon', (longitude ?? 0).toFixed(4));
+      p.set('zoom', zoom.toFixed(2));
       const active = Object.entries(activeLayers).filter(([,v]) => v).map(([k]) => k).join(',');
       p.set('layers', active);
       const url = `${window.location.pathname}?${p.toString()}`;
       window.history.replaceState(null, '', url);
     }, 1500);
-  }, [mapView, activeLayers]);
+  }, [latitude, longitude, zoom, activeLayers]);
 
   // Global Stats Fetch
   useEffect(() => {
@@ -270,20 +317,20 @@ export default function Dashboard() {
         if (document.fullscreenElement) document.exitFullscreen();
         else document.documentElement.requestFullscreen();
       }
-      if (e.key === 'l') setShowLayers(p => !p);
-      if (e.key === 'm') setShowMarkets(p => !p);
-      if (e.key === 'c') setShowScmPanel(p => !p);
-      if (e.key === 'i') setShowIntel(p => !p);
-      if (e.key === 'd') setShowLowerDrawer(p => !p);
+      if (e.key === 'l') toggleLayerPanel();
+      if (e.key === 'm') toggleViewPresets(); // Markets panel not in UI store yet
+      if (e.key === 'c') toggleOsintPanel(); // SCM panel not in UI store yet
+      if (e.key === 'i') toggleAIBriefing();
+      if (e.key === 'd') setShowLowerDrawer(!uiShowLowerDrawer);
       if (e.key === 'r') goHome();
-      if (e.key === 'v') setShowViewControls(p => !p);
-      if (e.key === 'g') setMapProjection(p => p === 'globe' ? 'mercator' : 'globe');
+      if (e.key === 'v') toggleViewPresets();
+      if (e.key === 'g') setMapView({ projection: projection === 'globe' ? 'mercator' : 'globe' });
     };
     const fsHandler = () => setIsFullscreen(!!document.fullscreenElement);
     window.addEventListener('keydown', handler);
     document.addEventListener('fullscreenchange', fsHandler);
     return () => { window.removeEventListener('keydown', handler); document.removeEventListener('fullscreenchange', fsHandler); };
-  }, [goHome]);
+  }, [goHome, toggleLayerPanel, toggleViewPresets, toggleOsintPanel, toggleAIBriefing, uiShowLowerDrawer, setShowLowerDrawer, projection, setMapView]);
 
   // Mouse coords + reverse geocode (Zero-Render)
   const handleMouseCoords = useCallback((coords: { lat: number; lng: number }) => {
@@ -390,139 +437,27 @@ export default function Dashboard() {
         setShowRightDrawer(true);
       }
     };
-    return () => { delete (window as any).openBeaconIntel; };
-  }, []);
+        return () => { delete (window as any).openBeaconIntel; };
+      }, [setShowRightDrawer, toggleEntityGraph, setEntityGraphTarget, setRightDrawerEntity]);
 
-  // \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 SHARED FETCH UTILITY (Fixes #107 \u2014 single definition, not 3 copies) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-    const fetchEndpoint = useCallback(async (url: string, transform?: (d: any) => any, options?: RequestInit) => {
-      if (typeof document !== 'undefined' && document.hidden) return;
-      try {
-        const d = await deduplicatedFetchEndpoint(url, transform, options);
-        if (d) {
-          dataRef.current = { ...dataRef.current, ...d };
-          setDataVersion(v => v + 1);
-          setBackendStatus('connected');
-        }
-      } catch (e) {
-        console.warn('[BEACON] Suppressed error:', e instanceof Error ? e.message : e);
-        setBackendStatus('error');
-      }
-    }, []);
-
-  // ── PROGRESSIVE DATA LOADING (request-optimized) ──
-  useEffect(() => {
-    // Priority 1: Core feeds (always needed for panels)
-    fetchEndpoint('/api/earthquakes');
-    fetchEndpoint('/api/news');
-    const marketTimer = setTimeout(() => fetchEndpoint('/api/markets', d => ({ markets: d })), 800);
-
-    // Priority 2: Space Weather (needed for MarketsPanel)
-    const spaceTimer = setTimeout(async () => {
-      try {
-        const r = await fetch('/api/space-weather');
-        if (r.ok) setSpaceWeather(await r.json());
-      } catch (e) { console.warn('[BEACON] Suppressed error:', e instanceof Error ? e.message : e); }
-    }, 5000);
-
-    // Polling — OPTIMIZED intervals to minimize edge requests
-    const intervals = [
-      setInterval(() => fetchEndpoint('/api/earthquakes'), 900000),  // 15 min (was 5)
-      setInterval(() => fetchEndpoint('/api/news'), 1800000),        // 30 min (was 10)
-      setInterval(() => fetchEndpoint('/api/markets', d => ({ markets: d })), 900000), // 15 min (was 5)
-    ];
-    return () => {
-      clearTimeout(marketTimer);
-      clearTimeout(spaceTimer);
-      intervals.forEach(clearInterval);
-    };
-  }, [fetchEndpoint]);
-
-  // ── LAYER-AWARE DATA LOADING — only fetch when layer is toggled ON ──
-  const layerFetchedRef = useRef<Set<string>>(new Set());
-  useEffect(() => {
-
-    // Flights
-    if (activeLayers.flights || activeLayers.military || activeLayers.jets || activeLayers.private) {
-      if (!layerFetchedRef.current.has('flights')) {
-        fetchEndpoint('/api/flights');
-        layerFetchedRef.current.add('flights');
-      }
-    }
-    // Satellites
-    if (activeLayers.satellites && !layerFetchedRef.current.has('satellites')) {
-      fetchEndpoint('/api/satellites');
-      layerFetchedRef.current.add('satellites');
-    }
-    // Fires
-    if (activeLayers.fires && !layerFetchedRef.current.has('fires')) {
-      fetchEndpoint('/api/fires');
-      layerFetchedRef.current.add('fires');
-    }
-    // CCTV
-    if (activeLayers.cctv && !layerFetchedRef.current.has('cctv')) {
-      fetchEndpoint('/api/cctv?region=all&v=2');
-      layerFetchedRef.current.add('cctv');
-    }
-    // Maritime
-    if (activeLayers.maritime && !layerFetchedRef.current.has('maritime')) {
-      fetchEndpoint('/api/maritime', d => ({ maritime_ports: d.ports, maritime_chokepoints: d.chokepoints, maritime_ships: d.ships }));
-      layerFetchedRef.current.add('maritime');
-    }
-    // Balloons
-    if (activeLayers.balloons && !layerFetchedRef.current.has('balloons')) {
-      fetchEndpoint('/api/balloons', d => ({ balloons: d.balloons }));
-      layerFetchedRef.current.add('balloons');
-    }
-    // Radiation
-    if (activeLayers.radiation && !layerFetchedRef.current.has('radiation')) {
-      fetchEndpoint('/api/radiation', d => ({ radiation: d.stations }));
-      layerFetchedRef.current.add('radiation');
-    }
-    if (activeLayers.port_disruptions && !layerFetchedRef.current.has('port_disruptions')) {
-      fetchEndpoint('/api/port-disruptions', d => ({ port_disruptions: d.disruptions }));
-      layerFetchedRef.current.add('port_disruptions');
-    }
-    if (activeLayers.conflict_events && !layerFetchedRef.current.has('conflict_events')) {
-      fetchEndpoint('/api/conflict-events', d => ({ conflict_events: d.events }));
-      layerFetchedRef.current.add('conflict_events');
-    }
-    // Live News
-    if (activeLayers.live_news && !layerFetchedRef.current.has('live_news')) {
-      fetchEndpoint('/api/live-news', d => ({ live_feeds: d.feeds }));
-      layerFetchedRef.current.add('live_news');
-    }
-    // Weather
-    if (activeLayers.weather && !layerFetchedRef.current.has('weather')) {
-      fetchEndpoint('/api/weather', d => ({ weather_events: d.events }));
-      layerFetchedRef.current.add('weather');
-    }
-    // Infrastructure
-    if (activeLayers.infrastructure && !layerFetchedRef.current.has('infrastructure')) {
-      fetchEndpoint('/api/infrastructure', d => ({ infrastructure: d.infrastructure }));
-      layerFetchedRef.current.add('infrastructure');
-    }
-    // Global Incidents (GDELT)
-    if (activeLayers.global_incidents && !layerFetchedRef.current.has('gdelt')) {
-      fetchEndpoint('/api/gdelt', d => ({ gdelt: d.events }));
-      layerFetchedRef.current.add('gdelt');
-    }
-
-    // Submarine Cables
-    if (activeLayers.cables && !layerFetchedRef.current.has('cables')) {
-      (async () => {
+      // Shared fetch utility for non-hook uses (region dossier, etc.)
+      const fetchEndpoint = useCallback(async (url: string, transform?: (d: any) => any, options?: RequestInit) => {
+        if (typeof document !== 'undefined' && document.hidden) return;
         try {
-          const ts = Date.now();
-      const res = await fetch(`/data/submarine-cables.json?v=${ts}`);
-          if (res.ok) {
-             const cablesData = await res.json();
-             dataRef.current = { ...dataRef.current, submarine_cables: cablesData.features };
-             setDataVersion(v => v + 1);
+          const d = await deduplicatedFetchEndpoint(url, transform, options);
+          if (d) {
+            dataRef.current = { ...dataRef.current, ...d };
+            incrementDataVersion();
+            setBackendStatus('connected');
           }
-        } catch (e) { console.warn('Cables fetch failed'); }
-      })();
-      layerFetchedRef.current.add('cables');
-    }
+        } catch (e) {
+          console.warn('[BEACON] Suppressed error:', e instanceof Error ? e.message : e);
+          setBackendStatus('error');
+        }
+      }, []);
 
+      // Global Stats Fetch
+      useEffect(() => {
     // Internet Outages (IODA)
     if (false) {
       fetchEndpoint('/api/radar', d => ({ ioda_outages: d.outages }));
@@ -537,26 +472,7 @@ export default function Dashboard() {
 
   }, [activeLayers]);
 
-  // ── LAYER-AWARE POLLING — only poll data for active layers ──
-  useEffect(() => {
-    const intervals: ReturnType<typeof setInterval>[] = [];
-    if (activeLayers.flights || activeLayers.military || activeLayers.jets || activeLayers.private) {
-      intervals.push(setInterval(() => fetchEndpoint('/api/flights'), 300000)); // 5 min (was 2 min)
-    }
-
-    if (activeLayers.balloons) {
-      intervals.push(setInterval(() => fetchEndpoint('/api/balloons', d => ({ balloons: d.balloons })), 300000)); // 5m
-    }
-    if (activeLayers.radiation) {
-      intervals.push(setInterval(() => fetchEndpoint('/api/radiation', d => ({ radiation: d.stations })), 300000)); // 5m
-    }
-    if (activeLayers.maritime) {
-      intervals.push(setInterval(() => fetchEndpoint('/api/maritime', d => ({ maritime_ports: d.ports, maritime_chokepoints: d.chokepoints, maritime_ships: d.ships })), 10000)); // 10s
-    }
-    return () => intervals.forEach(clearInterval);
-  }, [activeLayers, fetchEndpoint]);
-
-  // CCTV: loaded once on layer toggle via layerFetchedRef (no viewport polling)
+  // CCTV: loaded once on layer toggle (handled by TanStack Query)
 
   // Reactive layer fetch: handled by layerFetchedRef above (no duplicate)
 
@@ -653,7 +569,7 @@ export default function Dashboard() {
 
       {/* ── SPLASH ── */}
       <AnimatePresence>
-        {showSplash && (
+        {uiShowSplash && (
           <motion.div
             initial={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -847,22 +763,22 @@ export default function Dashboard() {
 
       {/* ── MAP ── */}
       <ErrorBoundary name="Map">
-        <BeaconMap 
-          data={data} 
-          activeLayers={activeLayers} 
-          projection={mapProjection} 
-          mapStyle={mapStyle === 'satellite' ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}' : 'dark'} 
-          onEntityClick={handleEntityClick} 
-          onMouseCoords={handleMouseCoords} 
-          onRightClick={handleRightClick} 
-          onViewStateChange={setMapView} 
-          flyToLocation={flyToLocation}
-          sweepData={sweepData}
-          scanTargets={scanTargets}
-          demoMode={demoMode}
-          visualScale={viewSettings.iconScale}
-        />
-      </ErrorBoundary>
+              <BeaconMap
+                data={data}
+                activeLayers={activeLayers}
+                projection={projection}
+                mapStyle={mapStoreStyle === 'satellite' ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}' : 'dark'}
+                onEntityClick={handleEntityClick}
+                onMouseCoords={handleMouseCoords}
+                onRightClick={handleRightClick}
+                onViewStateChange={setMapView}
+                flyToLocation={mapFlyToLocation}
+                sweepData={sweepData}
+                scanTargets={scanTargets}
+                demoMode={demoMode}
+                visualScale={viewSettings.iconScale}
+              />
+            </ErrorBoundary>
 
 
       {/* ── MAP VIEW CONTROLS (3D/2D + SATELLITE TOGGLE) ── */}
@@ -872,33 +788,33 @@ export default function Dashboard() {
       >
         {/* 3D/2D Toggle */}
         <button
-          onClick={() => setMapProjection(p => p === 'globe' ? 'mercator' : 'globe')}
+          onClick={() => setMapView({ projection: projection === 'globe' ? 'mercator' : 'globe' })}
           className="glass-panel p-3.5 pointer-events-auto hover:border-[var(--gold-primary)]/40 transition-colors group relative"
-          title={mapProjection === 'globe' ? 'Switch to 2D Map' : 'Switch to 3D Globe'}
+          title={projection === 'globe' ? 'Switch to 2D Map' : 'Switch to 3D Globe'}
         >
-          {mapProjection === 'globe' ? (
+          {projection === 'globe' ? (
             <MapPinned className="w-5 h-5 text-[var(--gold-primary)] group-hover:scale-110 transition-transform" />
           ) : (
             <Globe className="w-5 h-5 text-[var(--cyan-primary)] group-hover:scale-110 transition-transform" />
           )}
           <span className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 text-[9px] font-mono text-[var(--text-muted)] whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity glass-panel px-2 py-1 z-[300]">
-            {mapProjection === 'globe' ? '2D MAP' : '3D GLOBE'}
+            {projection === 'globe' ? '2D MAP' : '3D GLOBE'}
           </span>
         </button>
 
         {/* Map Style Toggle */}
         <button
-          onClick={() => setMapStyle(s => s === 'dark' ? 'satellite' : 'dark')}
+          onClick={() => setMapView({ mapStyle: mapStoreStyle === 'dark' ? 'satellite' : 'dark' })}
           className="glass-panel p-3.5 pointer-events-auto hover:border-[var(--gold-primary)]/40 transition-colors group relative"
-          title={mapStyle === 'dark' ? 'Satellite View' : 'Night View'}
+          title={mapStoreStyle === 'dark' ? 'Satellite View' : 'Night View'}
         >
-          {mapStyle === 'dark' ? (
+          {mapStoreStyle === 'dark' ? (
             <Satellite className="w-5 h-5 text-[var(--alert-green)] group-hover:scale-110 transition-transform" />
           ) : (
             <Moon className="w-5 h-5 text-[var(--cyan-primary)] group-hover:scale-110 transition-transform" />
           )}
           <span className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 text-[9px] font-mono text-[var(--text-muted)] whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity glass-panel px-2 py-1 z-[300]">
-            {mapStyle === 'dark' ? 'SATELLITE' : 'NIGHT MODE'}
+            {mapStoreStyle === 'dark' ? 'SATELLITE' : 'NIGHT MODE'}
           </span>
         </button>
 
@@ -914,7 +830,7 @@ export default function Dashboard() {
         </button>
 
         <button
-          onClick={() => setShowViewControls(p => !p)}
+          onClick={() => toggleViewControls()}
           className={`glass-panel p-3.5 pointer-events-auto hover:border-[var(--gold-primary)]/40 transition-colors group relative ${showViewControls ? 'border-[var(--gold-primary)]/50 bg-[var(--gold-primary)]/10' : ''}`}
           title="Open view controls"
           aria-expanded={showViewControls}
@@ -993,83 +909,75 @@ export default function Dashboard() {
 
 
       {/* ── NEW SIDEBAR (Root Level) ── */}
-      {showLayers && !isMobile && <LayerPanel data={data} activeLayers={activeLayers} setActiveLayers={setActiveLayers} density={viewSettings.density} />}
+      {showLayerPanel && !uiIsMobile && <LayerPanel data={data} activeLayers={activeLayers} setActiveLayers={toggleLayer} density={viewSettings.density} />}
 
       {/* ── LOWER OPS DRAWER (desktop) ── */}
-      {!isMobile && (
+      {!uiIsMobile && (
         <LowerDrawer
           data={data}
           activeLayers={activeLayers}
           backendStatus={backendStatus}
-          mapView={mapView}
-          open={showLowerDrawer}
-          onToggle={() => setShowLowerDrawer(p => !p)}
+          mapView={{ latitude, longitude, zoom }}
+          open={uiShowLowerDrawer}
+          onToggle={() => setShowLowerDrawer(!uiShowLowerDrawer)}
           onFocusLocation={(lat, lng) => setFlyToLocation({ lat, lng, zoom: 5, ts: Date.now() })}
         />
       )}
 
       {/* ── RIGHT TOOL STRIP (desktop only — mobile uses bottom nav) ── */}
-      {!isMobile && <div className="absolute right-2 top-1/2 -translate-y-1/2 flex flex-col gap-2 z-[250] pointer-events-auto bg-black/40 backdrop-blur-sm p-1 rounded-full border border-white/5">
+      {!uiIsMobile && <div className="absolute right-2 top-1/2 -translate-y-1/2 flex flex-col gap-2 z-[250] pointer-events-auto bg-black/40 backdrop-blur-sm p-1 rounded-full border border-white/5">
         <div className="relative group">
-          <button onClick={() => { setShowIntel(!showIntel); setShowMarkets(false); setShowAlerts(false); setShowAIBrief(false); }} className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${showIntel ? 'bg-[var(--cyan-primary)]/20' : 'hover:bg-white/10'}`}>
-            <Radar className={`w-4 h-4 ${showIntel ? 'text-[var(--cyan-primary)]' : 'text-white/60'}`} />
+          <button onClick={() => { toggleOsintPanel(); }} className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${showOsintPanel ? 'bg-[var(--cyan-primary)]/20' : 'hover:bg-white/10'}`}>
+            <Radar className={`w-4 h-4 ${showOsintPanel ? 'text-[var(--cyan-primary)]' : 'text-white/60'}`} />
           </button>
           {/* OSINT / Recon Panel Slideout */}
           <AnimatePresence>
-            {showIntel && (
-              <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} className="absolute right-12 top-1/2 -translate-y-1/2 w-80 overflow-y-auto">
-                <OsintPanel onSweepVisualize={setSweepData} onScanGeolocate={(target, data) => {
-                  setScanTargets(prev => {
-                    const existing = prev.filter(t => t.id !== target);
-                    return [{ id: target, timestamp: Date.now(), ...data }, ...existing].slice(0, 10);
-                  });
-                  setFlyToLocation({ lat: data.lat, lng: data.lng, ts: Date.now() });
-                }} />
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
+            <div className="relative group">
+                      <button onClick={() => toggleMarkets()} className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${showMarkets ? 'bg-[var(--gold-primary)]/20' : 'hover:bg-white/10'}`}>
+                        <BarChart3 className={`w-4 h-4 ${showMarkets ? 'text-[var(--gold-primary)]' : 'text-white/60'}`} />
+                      </button>
+                      {/* Markets Panel Slideout */}
+                      <AnimatePresence>
+                        {showMarkets && (
+                          <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} className="absolute right-12 top-1/2 -translate-y-1/2 w-80 overflow-y-auto">
+                            <MarketsPanel data={data} spaceWeather={spaceWeather} />
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
 
-        <div className="relative group">
-          <button onClick={() => { setShowMarkets(!showMarkets); setShowIntel(false); setShowAlerts(false); setShowAIBrief(false); }} className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${showMarkets ? 'bg-[var(--gold-primary)]/20' : 'hover:bg-white/10'}`}>
-            <BarChart3 className={`w-4 h-4 ${showMarkets ? 'text-[var(--gold-primary)]' : 'text-white/60'}`} />
-          </button>
-          {/* Markets Panel Slideout */}
-          <AnimatePresence>
-            {showMarkets && (
-              <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} className="absolute right-12 top-1/2 -translate-y-1/2 w-80 overflow-y-auto">
-                <MarketsPanel data={data} spaceWeather={spaceWeather} />
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
+                    <div className="relative group">
+                      <button onClick={() => toggleAlerts()} className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${showAlerts ? 'bg-[#FF3D3D]/20' : 'hover:bg-white/10'}`}>
+                        <AlertTriangle className={`w-4 h-4 ${showAlerts ? 'text-[#FF3D3D]' : 'text-white/60'}`} />
+                      </button>
+                      {/* Alerts Panel Slideout */}
+                      <AnimatePresence>
+                        {showAlerts && (
+                          <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} className="absolute right-12 top-1/2 -translate-y-1/2 w-80 overflow-y-auto">
+                            <LiveAlerts data={data} onLocate={(lat, lng) => setFlyToLocation({ lat, lng, ts: Date.now() })} onWatchFeed={(url, name) => { setLiveFeedUrl(url); setLiveFeedName(name); }} />
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>      </div>
 
-        <div className="relative group">
-          <button onClick={() => { setShowAlerts(!showAlerts); setShowIntel(false); setShowMarkets(false); setShowEntityGraph(false); setShowAIBrief(false); }} className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${showAlerts ? 'bg-[#FF3D3D]/20' : 'hover:bg-white/10'}`}>
-            <AlertTriangle className={`w-4 h-4 ${showAlerts ? 'text-[#FF3D3D]' : 'text-white/60'}`} />
-          </button>
-          {/* Alerts Panel Slideout */}
-          <AnimatePresence>
-            {showAlerts && (
-              <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} className="absolute right-12 top-1/2 -translate-y-1/2 w-80 overflow-y-auto">
-                <LiveAlerts data={data} onLocate={(lat, lng) => setFlyToLocation({ lat, lng, ts: Date.now() })} onWatchFeed={(url, name) => { setLiveFeedUrl(url); setLiveFeedName(name); }} />
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-
-        <div className="relative group">
-          <button onClick={() => { setShowEntityGraph(!showEntityGraph); setShowIntel(false); setShowMarkets(false); setShowAlerts(false); setShowAIBrief(false); }} className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${showEntityGraph ? 'bg-[#D4AF37]/20' : 'hover:bg-white/10'}`}>
-            <Network className={`w-4 h-4 ${showEntityGraph ? 'text-[#D4AF37]' : 'text-white/60'}`} />
-          </button>
-        </div>
-
-        <div className="relative group">
-          <button onClick={() => { setShowAIBrief(!showAIBrief); setShowIntel(false); setShowMarkets(false); setShowAlerts(false); setShowEntityGraph(false); setShowRightDrawer(false); }} className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${showAIBrief ? 'bg-[var(--cyan-primary)]/20' : 'hover:bg-white/10'}`} title="BEACON Brief">
-            <Bot className={`w-4 h-4 ${showAIBrief ? 'text-[var(--cyan-primary)]' : 'text-white/60'}`} />
+                <div className="relative group">
+                  <button onClick={() => toggleAlerts()} className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${showAlerts ? 'bg-[#FF3D3D]/20' : 'hover:bg-white/10'}`}>
+                    <AlertTriangle className={`w-4 h-4 ${showAlerts ? 'text-[#FF3D3D]' : 'text-white/60'}`} />
+                  </button>
+                  {/* Alerts Panel Slideout */}
+                  <AnimatePresence>
+                    {showAlerts && (
+                      <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} className="absolute right-12 top-1/2 -translate-y-1/2 w-80 overflow-y-auto">
+                        <LiveAlerts data={data} onLocate={(lat, lng) => setFlyToLocation({ lat, lng, ts: Date.now() })} onWatchFeed={(url, name) => { setLiveFeedUrl(url); setLiveFeedName(name); }} />
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+          <button onClick={() => { toggleAIBriefing(); setShowRightDrawer(false); }} className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${showAIBriefing ? 'bg-[var(--cyan-primary)]/20' : 'hover:bg-white/10'}`} title="BEACON Brief">
+            <Bot className={`w-4 h-4 ${showAIBriefing ? 'text-[var(--cyan-primary)]' : 'text-white/60'}`} />
           </button>
           <AnimatePresence>
-            {showAIBrief && (
+            {showAIBriefing && (
               <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} className="absolute right-12 top-1/2 -translate-y-1/2 w-[430px] max-h-[82vh] overflow-y-auto">
                 <AIBriefingPanel beaconData={data} />
               </motion.div>
@@ -1078,8 +986,8 @@ export default function Dashboard() {
         </div>
 
         <div className="relative group">
-          <button onClick={() => { setShowRightDrawer(!showRightDrawer); setShowIntel(false); setShowMarkets(false); setShowAlerts(false); setShowEntityGraph(false); setShowAIBrief(false); }} className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${showRightDrawer ? 'bg-[var(--gold-primary)]/20' : 'hover:bg-white/10'}`}>
-            <PanelLeft className={`w-4 h-4 ${showRightDrawer ? 'text-[var(--gold-primary)]' : 'text-white/60'}`} />
+          <button onClick={() => { setShowRightDrawer(!uiShowRightDrawer); }} className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${uiShowRightDrawer ? 'bg-[var(--gold-primary)]/20' : 'hover:bg-white/10'}`}>
+            <PanelLeft className={`w-4 h-4 ${uiShowRightDrawer ? 'text-[var(--gold-primary)]' : 'text-white/60'}`} />
           </button>
         </div>
       </div>}
@@ -1174,7 +1082,7 @@ export default function Dashboard() {
       </AnimatePresence>
 
       {/* ═══ MOBILE UI ═══ */}
-      {isMobile && (
+      {uiIsMobile && (
         <>
           {/* Mobile Bottom Navigation */}
           <div className="mobile-nav">
@@ -1186,8 +1094,8 @@ export default function Dashboard() {
                 { id: 'recon' as const, icon: Radar, label: 'RECON' },
                 { id: 'search' as const, icon: Search, label: 'SEARCH' },
               ].map(tab => (
-                <button key={tab.id} onClick={() => setMobilePanel(mobilePanel === tab.id ? null : tab.id)}
-                  className={`mobile-nav-btn ${mobilePanel === tab.id ? 'active' : ''}`}>
+                <button key={tab.id} onClick={() => setMobileActiveTab(mobileActiveTab === tab.id ? null : tab.id)}
+                  className={`mobile-nav-btn ${mobileActiveTab === tab.id ? 'active' : ''}`}>
                   <tab.icon className={`w-4 h-4 ${tab.id === 'recon' ? 'text-[var(--cyan-primary)]' : ''}`} />
                   <span className={tab.id === 'recon' ? 'text-[var(--cyan-primary)]' : ''}>{tab.label}</span>
                 </button>
@@ -1197,7 +1105,7 @@ export default function Dashboard() {
 
           {/* Mobile Drawer */}
           <AnimatePresence>
-            {mobilePanel && (
+            {mobileActiveTab && (
               <motion.div
                 initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
                 transition={{ type: 'spring', damping: 30, stiffness: 300 }}
@@ -1208,11 +1116,11 @@ export default function Dashboard() {
                 <div className="px-3 pb-3">
                   <div className="flex items-center justify-between mb-2">
                     <span className="hud-text text-[9px] text-[var(--text-primary)]">
-                      {mobilePanel === 'layers' ? 'LAYERS & STATS' : mobilePanel === 'markets' ? 'MARKETS & INTEL' : mobilePanel === 'intel' ? 'INTEL FEED' : mobilePanel === 'recon' ? 'BEACON RECON' : 'SEARCH'}
+                      {mobileActiveTab === 'layers' ? 'LAYERS & STATS' : mobileActiveTab === 'markets' ? 'MARKETS & INTEL' : mobileActiveTab === 'intel' ? 'INTEL FEED' : mobileActiveTab === 'recon' ? 'BEACON RECON' : 'SEARCH'}
                     </span>
-                    <button onClick={() => setMobilePanel(null)} className="text-[var(--text-muted)] p-1"><X className="w-4 h-4" /></button>
+                    <button onClick={() => setMobileActiveTab(null)} className="text-[var(--text-muted)] p-1"><X className="w-4 h-4" /></button>
                   </div>
-                  {mobilePanel === 'layers' && (
+                  {mobileActiveTab === 'layers' && (
                     <>
                       <div className="glass-panel-sm p-2 mb-2">
                         <div className="grid grid-cols-5 gap-1 text-center">
@@ -1223,23 +1131,23 @@ export default function Dashboard() {
                           <div><div className="hud-label" style={{fontSize:'6px'}}>NUC</div><div className="hud-value text-[9px]" style={{color:'var(--accent-nuclear)'}}>{(data.infrastructure?.length||0)}</div></div>
                         </div>
                       </div>
-                      <LayerPanel data={data} activeLayers={activeLayers} setActiveLayers={setActiveLayers} isMobile={true} />
+                      <LayerPanel data={data} activeLayers={activeLayers} setActiveLayers={toggleLayer} isMobile={true} />
                       <div className="mt-2">
-                        <ViewPresets onNavigate={(lat, lng, zoom) => { setFlyToLocation({ lat, lng, ts: Date.now() }); setMapView(v => ({ ...v, zoom })); setMobilePanel(null); }} />
+                        <ViewPresets onNavigate={(lat, lng, zoom) => { setFlyToLocation({ lat, lng, ts: Date.now() }); setMapView({ zoom }); setMobileActiveTab(null); }} />
                       </div>
                     </>
                   )}
-                  {mobilePanel === 'markets' && <MarketsPanel data={data} spaceWeather={spaceWeather} />}
-                  {mobilePanel === 'intel' && <IntelFeed data={data} onLocate={(lat, lng) => { setFlyToLocation({ lat, lng, ts: Date.now() }); setMobilePanel(null); }} />}
-                  {mobilePanel === 'search' && (
+                  {mobileActiveTab === 'markets' && <MarketsPanel data={data} spaceWeather={spaceWeather} />}
+                  {mobileActiveTab === 'intel' && <IntelFeed data={data} onLocate={(lat, lng) => { setFlyToLocation({ lat, lng, ts: Date.now() }); setMobileActiveTab(null); }} />}
+                  {mobileActiveTab === 'search' && (
+                                      <div className="space-y-2">
+                                        <SearchBar onLocate={(lat, lng) => { setFlyToLocation({ lat, lng, ts: Date.now() }); setMobileActiveTab(null); }} />
+                                        <SharePanel mapView={{ latitude, longitude, zoom }} activeLayers={activeLayers} mouseCoords={null} />
+                                      </div>
+                                    )}
+                                    {mobileActiveTab === 'recon' && (
                     <div className="space-y-2">
-                      <SearchBar onLocate={(lat, lng) => { setFlyToLocation({ lat, lng, ts: Date.now() }); setMobilePanel(null); }} />
-                      <SharePanel mapView={mapView} activeLayers={activeLayers} mouseCoords={null} />
-                    </div>
-                  )}
-                  {mobilePanel === 'recon' && (
-                    <div className="space-y-2">
-                      <OsintPanel isOpen={true} onClose={() => setMobilePanel(null)} isMobile={true} onSweepVisualize={setSweepData} />
+                      <OsintPanel isOpen={true} onClose={() => setMobileActiveTab(null)} isMobile={true} onSweepVisualize={setSweepData} />
                     </div>
                   )}
                 </div>
@@ -1250,7 +1158,7 @@ export default function Dashboard() {
       )}
 
       {/* ── BOTTOM RAW METRICS (desktop) ── */}
-      {!isMobile && (
+      {!uiIsMobile && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 3, duration: 0.8 }} className="desktop-only absolute bottom-4 left-20 z-[200] pointer-events-auto">
           <div className="flex items-center gap-6 text-[8px] font-mono tracking-widest text-[var(--text-muted)] opacity-60">
             <div className="flex gap-2 items-center">
@@ -1263,7 +1171,7 @@ export default function Dashboard() {
             </div>
             <div className="flex gap-2 items-center">
               <span>Z</span>
-              <span className="text-[var(--gold-primary)] font-bold tabular-nums">{mapView.zoom.toFixed(1)}</span>
+              <span className="text-[var(--gold-primary)] font-bold tabular-nums">{zoom.toFixed(1)}</span>
             </div>
           </div>
         </motion.div>
@@ -1271,7 +1179,7 @@ export default function Dashboard() {
 
       {/* ── Scale Bar (desktop) ── */}
       <div className="desktop-only absolute bottom-[7rem] left-[20rem] z-[201] pointer-events-none">
-        <ScaleBar zoom={mapView.zoom} latitude={mapView.latitude} />
+        <ScaleBar zoom={zoom} latitude={latitude} />
       </div>
 
       {/* ── Region Dossier ── */}
@@ -1316,16 +1224,16 @@ export default function Dashboard() {
       />
 
       {/* ── Entity Graph Panel ── */}
-      {showEntityGraph && (
+      {uiShowEntityGraph && (
         <EntityGraphPanel
           entity={entityGraphTarget}
-          onClose={() => setShowEntityGraph(false)}
+          onClose={() => toggleEntityGraph()}
         />
       )}
 
       {/* ── Right Analyst Drawer ── */}
       <RightDrawer
-        open={showRightDrawer}
+        open={uiShowRightDrawer}
         onClose={() => setShowRightDrawer(false)}
         entityRef={rightDrawerEntity}
         reconResults={rightDrawerRecon}
