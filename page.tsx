@@ -908,30 +908,31 @@ export default function Dashboard() {
 
 
 
-      {/* ── NEW SIDEBAR (Root Level) ── */}
-      {showLayerPanel && !uiIsMobile && <LayerPanel data={data} activeLayers={activeLayers} setActiveLayers={toggleLayer} density={viewSettings.density} />}
-
-      {/* ── LOWER OPS DRAWER (desktop) ── */}
+      {/* ── DESKTOP OVERLAYS ── */}
       {!uiIsMobile && (
-        <LowerDrawer
-          data={data}
-          activeLayers={activeLayers}
-          backendStatus={backendStatus}
-          mapView={{ latitude, longitude, zoom }}
-          open={uiShowLowerDrawer}
-          onToggle={() => setShowLowerDrawer(!uiShowLowerDrawer)}
-          onFocusLocation={(lat, lng) => setFlyToLocation({ lat, lng, zoom: 5, ts: Date.now() })}
-        />
-      )}
+        <>
+          {/* ── NEW SIDEBAR (Root Level) ── */}
+          {showLayerPanel && <LayerPanel data={data} activeLayers={activeLayers} setActiveLayers={toggleLayer} density={viewSettings.density} />}
 
-      {/* ── RIGHT TOOL STRIP (desktop only — mobile uses bottom nav) ── */}
-      {!uiIsMobile && <div className="absolute right-2 top-1/2 -translate-y-1/2 flex flex-col gap-2 z-[250] pointer-events-auto bg-black/40 backdrop-blur-sm p-1 rounded-full border border-white/5">
-        <div className="relative group">
-          <button onClick={() => { toggleOsintPanel(); }} className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${showOsintPanel ? 'bg-[var(--cyan-primary)]/20' : 'hover:bg-white/10'}`}>
-            <Radar className={`w-4 h-4 ${showOsintPanel ? 'text-[var(--cyan-primary)]' : 'text-white/60'}`} />
-          </button>
-          {/* OSINT / Recon Panel Slideout */}
-          <AnimatePresence>
+          {/* ── LOWER OPS DRAWER (desktop) ── */}
+          <LowerDrawer
+            data={data}
+            activeLayers={activeLayers}
+            backendStatus={backendStatus}
+            mapView={{ latitude, longitude, zoom }}
+            open={uiShowLowerDrawer}
+            onToggle={() => setShowLowerDrawer(!uiShowLowerDrawer)}
+            onFocusLocation={(lat, lng) => setFlyToLocation({ lat, lng, zoom: 5, ts: Date.now() })}
+          />
+
+          {/* ── RIGHT TOOL STRIP (desktop only — mobile uses bottom nav) ── */}
+          <div className="absolute right-2 top-1/2 -translate-y-1/2 flex flex-col gap-2 z-[250] pointer-events-auto bg-black/40 backdrop-blur-sm p-1 rounded-full border border-white/5">
+            <div className="relative group">
+              <button onClick={() => { toggleOsintPanel(); }} className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${showOsintPanel ? 'bg-[var(--cyan-primary)]/20' : 'hover:bg-white/10'}`}>
+                <Radar className={`w-4 h-4 ${showOsintPanel ? 'text-[var(--cyan-primary)]' : 'text-white/60'}`} />
+              </button>
+              {/* OSINT / Recon Panel Slideout */}
+              <AnimatePresence>
             <div className="relative group">
                       <button onClick={() => toggleMarkets()} className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${showMarkets ? 'bg-[var(--gold-primary)]/20' : 'hover:bg-white/10'}`}>
                         <BarChart3 className={`w-4 h-4 ${showMarkets ? 'text-[var(--gold-primary)]' : 'text-white/60'}`} />
