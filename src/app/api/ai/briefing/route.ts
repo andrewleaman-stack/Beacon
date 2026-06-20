@@ -1,284 +1,218 @@
-/**
- * ════════════════════════════════════════════════════════════════
- *  BEACON — AI Intelligence Briefing Endpoint
- *  POST /api/ai/briefing
- *  Generates structured threat briefings via OpenRouter
- *  Supports role-based briefings and automatic translation
- * ════════════════════════════════════════════════════════════════
- */
+// Streaming briefing API with ReadableStream
+// Replaces the blocking 45s timeout with incremental streaming
 
-import { NextRequest, NextResponse } from 'next/server';
-import {
-  generateBriefing,
-  translateToEnglish,
-  type IntelligenceContext,
-  type BriefingRole,
-  type BriefingMode,
-} from '@/lib/ai-engine';
-import { appendBriefing } from '@/lib/briefing-log.mjs';
+import type { IntelligenceContext } from '@/types/feeds';
 
-export const dynamic = 'force-dynamic';
-
-/* ─────────────────────────────────────────────────────────────
-   Rate Limiter — 5 requests per minute per IP
-   ───────────────────────────────────────────────────────────── */
-
-interface RateLimitEntry {
-  count: number;
-  resetAt: number;
-}
-
-const rateLimitMap = new Map<string, RateLimitEntry>();
-const RATE_LIMIT_MAX = 5;
-const RATE_LIMIT_WINDOW_MS = 60_000;
-
-function checkRateLimit(ip: string): { allowed: boolean; remaining: number; resetIn: number } {
-  const now = Date.now();
-  const entry = rateLimitMap.get(ip);
-
-  if (!entry || now > entry.resetAt) {
-    rateLimitMap.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
-    return { allowed: true, remaining: RATE_LIMIT_MAX - 1, resetIn: RATE_LIMIT_WINDOW_MS };
-  }
-
-  if (entry.count >= RATE_LIMIT_MAX) {
-    return { allowed: false, remaining: 0, resetIn: entry.resetAt - now };
-  }
-
-  entry.count++;
-  return { allowed: true, remaining: RATE_LIMIT_MAX - entry.count, resetIn: entry.resetAt - now };
-}
-
-// Periodic cleanup to prevent memory leaks
-setInterval(() => {
-  const now = Date.now();
-  for (const [ip, entry] of rateLimitMap.entries()) {
-    if (now > entry.resetAt) {
-      rateLimitMap.delete(ip);
-    }
-  }
-}, 120_000);
-
-/* ─────────────────────────────────────────────────────────────
-   Request / Response types
-   ───────────────────────────────────────────────────────────── */
-
-interface BriefingRequestBody {
+interface BriefingRequest {
   context: IntelligenceContext;
-  role?: BriefingRole; // Optional role, defaults to 'general'
-  translateNonEnglish?: boolean; // Whether to translate non-English items in context
-  mode?: BriefingMode; // 'highlights' for default short brief, 'full' for full report
+  role: 'general' | 'chaplain' | 'police';
+  translateNonEnglish: boolean;
+  mode: 'highlights' | 'full';
 }
 
-interface BriefingResponse {
-  briefing: string;
-  generatedAt: string;
-  roleUsed: BriefingRole;
-  translated: boolean; // Whether translation was performed
-  modeUsed: BriefingMode;
+const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
+const STREAM_TIMEOUT_MS = 45_000;
+
+function buildSystemPrompt(role: string): string {
+  const basePrompt = `You are BEACON Intelligence Analyst — a senior, elite intelligence analyst embedded within the BEACON Global Intelligence Platform. You operate at the level of a Palantir Forward Deployed Engineer crossed with a CIA PDB (Presidential Daily Brief) analyst.
+
+## YOUR ROLE
+- You correlate data across multiple intelligence feeds: seismic monitoring, OSINT news streams, global threat events, and cyber vulnerability databases
+- You identify non-obvious patterns, emerging threat vectors, and cascading risk scenarios
+- You provide ACTIONABLE intelligence — not summaries, but assessments with confidence levels
+- You think in terms of second and third-order effects
+
+## YOUR ANALYTICAL FRAMEWORK
+1. **PATTERN RECOGNITION**: Cross-reference events across feeds. A cyber attack + earthquake + political instability in the same region = elevated compound risk
+2. **THREAT ASSESSMENT**: Rate threats on a CRITICAL / HIGH / ELEVATED / LOW scale with reasoning
+3. **TEMPORAL ANALYSIS**: Identify acceleration patterns — are events clustering? Is frequency increasing?
+4. **GEOSPATIAL CORRELATION**: Events in proximity may be related. Identify geographic hotspots
+5. **CONFIDENCE LEVELS**: Always state your confidence (HIGH / MODERATE / LOW) and cite which data points support your assessment
+
+## OUTPUT FORMAT
+- Use military-style brevity when appropriate
+- Structure responses with clear headers using markdown
+- Lead with the most critical finding (inverted pyramid)
+- Include "BOTTOM LINE UP FRONT (BLUF)" for complex analyses
+- Use tactical notation: DTG (Date-Time Group), AOR (Area of Responsibility), COA (Course of Action)
+- End with "ASSESSMENT CONFIDENCE" and "RECOMMENDED ACTIONS" sections when appropriate
+
+## CONSTRAINTS
+- Never fabricate data points — only analyze what is provided in the context
+- If data is insufficient for a confident assessment, state so explicitly
+- Distinguish between correlation and causation
+- Flag when events may be connected vs. coincidental
+- You are an analyst, not a policymaker — present options, not directives
+
+You have access to the live intelligence context of the BEACON platform. Analyze it with precision.`;
+
+  const roleSpecialization = {
+    chaplain: `
+ROLE SPECIALIZATION: Chaplain/Pastoral Care Perspective
+Focus on human impact, community needs, and spiritual dimensions:
+- Casualties, injuries, and displaced persons
+- Shelter, food, water, and medical needs
+- Emotional and spiritual support requirements
+- Community resilience and coping mechanisms
+- Coordination with faith-based organizations and relief efforts
+- Ethical considerations in response efforts`,
+    police: `
+ROLE SPECIALIZATION: Law Enforcement/Public Safety Perspective
+Focus on operational, tactical, and security implications:
+- Public safety threats and hazard zones
+- Evacuation routes and traffic impacts
+- Resource deployment and mutual aid requirements
+- Crowd control and civil disturbance potential
+- Evidence preservation and investigative considerations
+- Coordination with emergency services and other agencies`,
+  };
+
+  return basePrompt + (roleSpecialization[role as keyof typeof roleSpecialization] || '');
 }
 
-interface ErrorResponse {
-  error: string;
-  code: string;
-  retryAfter?: number;
+function buildBriefingPrompt(context: IntelligenceContext, mode: string): string {
+  const isHighlights = mode === 'highlights';
+
+  if (isHighlights) {
+    return `Generate a short BEACON Hotspots Brief, not a full world report.
+
+Output requirements:
+- Keep it concise: 3-6 bullets plus a one-sentence BLUF.
+- Focus only on hotspots that matter right now based on provided feed data.
+- Prioritize escalation, public-safety relevance, operational disruption, cyber exposure, and compound risk.
+- Include source references inline using available source names and URLs/links when provided.
+- If an item is low confidence or feed coverage is thin, say so plainly.
+- Do not pad with regions that have no meaningful signal.
+- End with a short "WATCH NEXT" line listing what would change the assessment.`;
+  }
+
+  return `Generate a comprehensive BEACON Daily Intelligence Briefing based on the current operational data. Structure it as follows:
+
+## BEACON INTELLIGENCE BRIEFING
+**Classification:** OPEN SOURCE INTELLIGENCE (OSINT)
+**DTG:** [Current timestamp]
+
+### I. EXECUTIVE SUMMARY
+2-3 sentence overview of the current global threat landscape based on available data.
+
+### II. PRIORITY INTELLIGENCE REQUIREMENTS (PIRs)
+Identify the top 3-5 most significant developments from the data feeds, ranked by assessed impact.
+
+### III. SEISMIC & NATURAL HAZARD ASSESSMENT
+Analyze earthquake data for patterns — clustering, tectonic corridor activity, tsunami risk.
+
+### IV. GEOPOLITICAL & CONFLI CONFLICT INTELLIGENCE
+Synthesize news feeds for conflict escalation patterns, diplomatic shifts, or emerging crises.
+
+### V. CYBER THREAT LANDSCAPE
+Assess active CVEs and cyber alerts for coordinated campaign indicators or critical infrastructure risk.
+
+### VI. COMPOUND RISK SCENARIOS
+Identify where multiple threat vectors intersect (e.g., earthquake near a conflict zone, cyber attack during political instability).
+
+### VII. FORECAST & WATCHLIST
+- **Next 24 Hours**: Most likely developments
+- **Next 72 Hours**: Emerging situations to monitor
+- **Strategic Horizon**: Longer-term trend assessment
+
+### VIII. ASSESSMENT CONFIDENCE
+State overall confidence level and key analytical gaps.
+
+Analyze the provided data thoroughly. Be specific — reference actual events, magnitudes, locations, and CVE IDs from the context.`;
 }
 
-/* ─────────────────────────────────────────────────────────────
-   POST Handler
-   ───────────────────────────────────────────────────────────── */
+export async function streamBriefing(request: BriefingRequest): Promise<ReadableStream> {
+  const { context, role, translateNonEnglish, mode } = request;
+  const apiKey = process.env.OPENROUTER_API_KEY;
 
-export async function POST(
-  request: NextRequest
-): Promise<NextResponse<BriefingResponse | ErrorResponse>> {
-  // Extract client IP
-  const ip =
-    request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
-    request.headers.get('x-real-ip') ||
-    'unknown';
+  if (!apiKey) {
+    throw new Error('OPENROUTER_API_KEY not configured');
+  }
 
-  // Rate limit check
-  const rateCheck = checkRateLimit(ip);
-  if (!rateCheck.allowed) {
-    return NextResponse.json(
-      {
-        error: 'Rate limit exceeded. Maximum 5 requests per minute.',
-        code: 'RATE_LIMITED',
-        retryAfter: Math.ceil(rateCheck.resetIn / 1000),
+  const systemPrompt = buildSystemPrompt(role);
+  const briefingPrompt = buildBriefingPrompt(context, mode);
+
+  const messages = [
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: `${briefingPrompt}\n\nCurrent Intelligence Context:\n${serializeContext(context)}` },
+  ];
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), STREAM_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(OPENROUTER_API_URL, {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
       },
-      {
-        status: 429,
-        headers: {
-          'Retry-After': String(Math.ceil(rateCheck.resetIn / 1000)),
-          'X-RateLimit-Remaining': '0',
-          'X-RateLimit-Reset': String(Math.ceil(rateCheck.resetIn / 1000)),
-        },
-      }
-    );
-  }
-
-  // Parse request body
-  let body: BriefingRequestBody;
-  try {
-    body = (await request.json()) as BriefingRequestBody;
-  } catch {
-    return NextResponse.json(
-      { error: 'Invalid JSON in request body.', code: 'INVALID_BODY' },
-      { status: 400 }
-    );
-  }
-
-  if (!body.context) {
-    return NextResponse.json(
-      { error: 'Intelligence context is required.', code: 'MISSING_CONTEXT' },
-      { status: 400 }
-    );
-  }
-
-  // Determine role and mode
-  const role: BriefingRole = body.role ?? 'general';
-  const mode: BriefingMode = body.mode === 'full' ? 'full' : 'highlights';
-
-  // Fetch feed health to include in context for confidence annotation
-  let feedHealth; // We'll type this as any since it's an optional addition
-  try {
-    const feedHealthResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/feed-health`, {
-      method: 'GET',
-      headers: { 'Cache-Control': 'no-store' },
+      body: JSON.stringify({
+        model: 'google/gemini-2.5-pro',
+        messages,
+        temperature: 0.3,
+        max_tokens: 4000,
+        stream: true,
+      }),
     });
-    if (feedHealthResponse.ok) {
-      const feedHealthData = await feedHealthResponse.json();
-      // Transform to match our feedHealth interface
-      feedHealth = {
-        status: feedHealthData.status as 'operational' | 'degraded' | 'offline',
-        summary: {
-          totalFeeds: feedHealthData.summary.totalFeeds,
-          activeFeeds: feedHealthData.summary.activeFeeds,
-          totalRecords: feedHealthData.summary.totalRecords,
-          healthy: feedHealthData.summary.healthy,
-          stale: feedHealthData.summary.stale,
-          offline: feedHealthData.summary.offline,
-          idle: feedHealthData.summary.idle,
-        },
-      };
+
+    clearTimeout(timeout);
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || `HTTP ${response.status}`);
     }
-  } catch (feedHealthError) {
-    console.warn('[BEACON AI] Failed to fetch feed health for briefing context:', feedHealthError);
-    // Continue without feed health
+
+    return response.body!;
+  } catch (error) {
+    clearTimeout(timeout);
+    throw error;
   }
+}
 
-  // Optional: Translate non-English items in the context before generating briefing
-  let translated = false;
-  let processedContext = body.context;
-  if (body.translateNonEnglish !== false && mode === 'full') { // Full reports may pre-translate; highlights keep latency low
-    try {
-      // Translate text fields in news items and threat events for full reports only.
-      // Highlights mode asks the briefing model to translate only relevant snippets inline.
-      const contextCopy = JSON.parse(JSON.stringify(body.context)); // Deep copy
+function serializeContext(context: IntelligenceContext): string {
+  const sections: string[] = [];
+  sections.push(`[TIMESTAMP] ${context.timestamp}`);
 
-      // Add feed health to context
-      if (feedHealth) {
-        contextCopy.feedHealth = feedHealth;
-      }
-
-      // Translate news titles and descriptions
-      if (contextCopy.news && Array.isArray(contextCopy.news)) {
-        for (const item of contextCopy.news) {
-          if (item.title && typeof item.title === 'string') {
-            const translatedTitle = await translateToEnglish(item.title, 'auto');
-            if (translatedTitle !== item.title) {
-              item.title = translatedTitle;
-              translated = true;
-            }
-          }
-          if (item.description && typeof item.description === 'string') {
-            const translatedDesc = await translateToEnglish(item.description, 'auto');
-            if (translatedDesc !== item.description) {
-              item.description = translatedDesc;
-              translated = true;
-            }
-          }
-        }
-      }
-
-      // Translate threat event titles and descriptions
-      if (contextCopy.threats && Array.isArray(contextCopy.threats)) {
-        for (const threat of contextCopy.threats) {
-          if (threat.title && typeof threat.title === 'string') {
-            const translatedTitle = await translateToEnglish(threat.title, 'auto');
-            if (translatedTitle !== threat.title) {
-              threat.title = translatedTitle;
-              translated = true;
-            }
-          }
-          if (threat.description && typeof threat.description === 'string') {
-            const translatedDesc = await translateToEnglish(threat.description, 'auto');
-            if (translatedDesc !== threat.description) {
-              threat.description = translatedDesc;
-              translated = true;
-            }
-          }
-        }
-      }
-
-      processedContext = contextCopy;
-    } catch (translationError) {
-      console.warn('[BEACON AI] Translation failed, proceeding with original text:', translationError);
-      // Continue with original context if translation fails
-      processedContext = { ...body.context };
-      if (feedHealth) processedContext.feedHealth = feedHealth;
-    }
-  } else {
-    // Still add feed health even if not translating
-    processedContext = { ...body.context };
-    if (feedHealth) processedContext.feedHealth = feedHealth;
-  }
-
-  try {
-    // Generate briefing using the OpenRouter-only AI engine
-    const briefing = await generateBriefing(processedContext, role, mode);
-    // Log briefing to the shared backlog (id + retention handled centrally).
-    try {
-      await appendBriefing({ role, mode, briefing, translated });
-    } catch (logErr) {
-      // Logging failure should not break the briefing response
-      console.warn('[BEACON AI] Failed to log briefing:', logErr);
-    }
-
-    return NextResponse.json(
-      {
-        briefing,
-        generatedAt: new Date().toISOString(),
-        roleUsed: role,
-        translated,
-        modeUsed: mode,
-      },
-      {
-        status: 200,
-        headers: {
-          'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600', // 5 min cache, 10 min stale
-          'X-RateLimit-Remaining': String(rateCheck.remaining),
-        },
-      }
-    );
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Unknown AI error';
-    console.error('[BEACON AI] Briefing error:', message);
-
-    // Check for specific error types from our AI engine
-    if (message.includes('OPENROUTER_API_KEY')) {
-      return NextResponse.json(
-        {
-          error: 'AI service not configured. Please set OPENROUTER_API_KEY.',
-          code: 'NO_OPENROUTER_KEY',
-        },
-        { status: 503 }
+  if (context.earthquakes.length > 0) {
+    sections.push(`\n[SEISMIC DATA — ${context.earthquakes.length} events]`);
+    for (const eq of context.earthquakes) {
+      const tsunamiFlag = eq.tsunami ? ' ⚠️TSUNAMI' : '';
+      const alertFlag = eq.alert ? ` [ALERT:${eq.alert.toUpperCase()}]` : '';
+      sections.push(
+        `  M${eq.magnitude} | ${eq.location} | ${eq.latitude.toFixed(2)},${eq.longitude.toFixed(2)} | Depth:${eq.depth}km | ${eq.timestamp}${tsunamiFlag}${alertFlag}`
       );
     }
-
-    return NextResponse.json(
-      { error: 'Briefing generation failed. Please try again.', code: 'BRIEFING_FAILED' },
-      { status: 500 }
-    );
   }
+
+  if (context.news.length > 0) {
+    sections.push(`\n[OSINT NEWS FEED — ${context.news.length} items]`);
+    for (const item of context.news) {
+      const coords = item.coords ? ` | GEO:${item.coords[0].toFixed(2)},${item.coords[1].toFixed(2)}` : '';
+      sections.push(
+        `  RISK:${item.risk_score}/10 | ${item.source} | ${item.title}${coords} | ${item.published} | SRC:${item.link}`
+      );
+    }
+  }
+
+  if (context.threats.length > 0) {
+    sections.push(`\n[THREAT EVENTS — ${context.threats.length} active]`);
+    for (const threat of context.threats) {
+      sections.push(
+        `  ${threat.severity} | ${threat.type} | ${threat.title} | ${threat.region} | ${threat.timestamp}`
+      );
+    }
+  }
+
+  if (context.cyberAlerts.length > 0) {
+    sections.push(`\n[CYBER ALERTS — ${context.cyberAlerts.length} active]`);
+    for (const alert of context.cyberAlerts) {
+      sections.push(
+        `  ${alert.id} | ${alert.severity} | ${alert.vendor}/${alert.product} | ${alert.name} | Due:${alert.due}`
+      );
+    }
+  }
+
+  return sections.join('\n');
 }

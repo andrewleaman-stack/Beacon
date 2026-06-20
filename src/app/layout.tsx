@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import { QueryProvider } from '@/lib/query-provider';
 
 const SITE_URL = "https://beacon.live";
 const SITE_NAME = "BEACON";
@@ -202,9 +203,11 @@ export default function RootLayout({
 
       </head>
       <body className="antialiased">
-        <ErrorBoundary name="BEACON Core">
-          {children}
-        </ErrorBoundary>
+        <QueryProvider>
+          <ErrorBoundary name="BEACON Core">
+            {children}
+          </ErrorBoundary>
+        </QueryProvider>
       </body>
     </html>
   );
