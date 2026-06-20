@@ -75,8 +75,6 @@ function generateMockBriefing(context) {
   // Add confidence assessment
   parts.push('\nASSESSMENT CONFIDENCE: HIGH');
 
-  HIGH');
-
   return parts.join('\n');
 }
 

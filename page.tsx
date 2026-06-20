@@ -945,6 +945,7 @@ export default function Dashboard() {
                         )}
                       </AnimatePresence>
                     </div>
+          </AnimatePresence>
 
                     <div className="relative group">
                       <button onClick={() => toggleAlerts()} className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${showAlerts ? 'bg-[#FF3D3D]/20' : 'hover:bg-white/10'}`}>
