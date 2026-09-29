@@ -32,6 +32,8 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
     "@prisma/client": "^5.0.0",
+    "@tanstack/react-query": "^5.60.0",
+    "@tanstack/react-query-devtools": "^5.60.0",
     "@vercel/analytics": "^2.0.1",
     "framer-motion": "^12.38.0",
     "google-libphonenumber": "^3.2.44",
@@ -39,7 +41,7 @@
     "ioredis": "^5.4.0",
     "lucide-react": "^1.14.0",
     "maplibre-gl": "^5.24.0",
-    "next": "16.2.9",
+    "next": "16.3.7",
     "next-auth": "^5.0.0-beta.15",
     "react": "19.2.4",
     "react-dom": "19.2.4",
@@ -50,8 +52,6 @@
     "sharp": "^0.34.5",
     "ws": "^8.21.0",
     "zod": "^3.22.0",
-    "@tanstack/react-query": "^5.60.0",
-    "@tanstack/react-query-devtools": "^5.60.0",
     "zustand": "^5.0.0"
   },
   "devDependencies": {
@@ -62,7 +62,7 @@
     "@types/react-dom": "^19",
     "@types/ws": "^8.18.1",
     "eslint": "^9",
-    "eslint-config-next": "16.2.9",
+    "eslint-config-next": "16.3.7",
     "prisma": "^5.0.0",
     "tailwindcss": "^4",
     "typescript": "^5"
