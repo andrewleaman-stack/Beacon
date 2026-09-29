@@ -18,10 +18,15 @@ function hasValidSession(request: NextRequest): boolean {
   return !!authHeader || !!sessionCookie;
 }
 
+// Opt-in only. Nothing in the app issues a `beacon-session` cookie yet, so
+// enforcing this by default 401s every dashboard data call (the dashboard
+// shows no data). Set BEACON_REQUIRE_SESSION=1 once a real login flow exists.
+const REQUIRE_SESSION = process.env.BEACON_REQUIRE_SESSION === '1';
+
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  if (pathname.startsWith('/api/')) {
+  if (REQUIRE_SESSION && pathname.startsWith('/api/')) {
     if (isPublicPath(pathname)) {
       return NextResponse.next();
     }
