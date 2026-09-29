@@ -66,6 +66,12 @@ export const tokens = {
     panelHover: '0 8px 40px rgba(0, 0, 0, 0.6), 0 0 30px rgba(212, 175, 55, 0.08), 0 1px 0 rgba(212, 175, 55, 0.1) inset, 0 -1px 0 rgba(0, 0, 0, 0.3) inset',
     glow: '0 0 20px rgba(212, 175, 55, 0.12), 0 0 60px rgba(212, 175, 55, 0.06), 0 4px 30px rgba(0, 0, 0, 0.5)',
     glowCyan: '0 0 20px rgba(0, 229, 255, 0.1), 0 0 60px rgba(0, 229, 255, 0.05)',
+    // Stat value text-shadows, mirroring .stat-value-glow* in src/app/globals.css.
+    statValueGold: '0 0 8px rgba(212, 175, 55, 0.3), 0 0 20px rgba(212, 175, 55, 0.15)',
+    statValueGoldHover: '0 0 12px rgba(212, 175, 55, 0.3), 0 0 30px rgba(212, 175, 55, 0.25), 0 0 50px rgba(212, 175, 55, 0.1)',
+    statValueCyan: '0 0 8px rgba(0, 229, 255, 0.15), 0 0 20px rgba(0, 229, 255, 0.15)',
+    statValueCyanHover: '0 0 12px rgba(0, 229, 255, 0.15), 0 0 30px rgba(0, 229, 255, 0.25), 0 0 50px rgba(0, 229, 255, 0.1)',
+    statValueAlert: '0 0 8px rgba(255, 61, 61, 0.3), 0 0 20px rgba(255, 61, 61, 0.15)',
   },
   transitions: {
     fast: '0.2s cubic-bezier(0.4, 0, 0.2, 1)',

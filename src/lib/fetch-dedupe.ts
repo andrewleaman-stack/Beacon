@@ -73,5 +73,5 @@ export async function deduplicatedFetchEndpoint<T>(
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const json = await res.json();
     return transform ? transform(json) : json;
-  }, options);
+  }, { signal: options?.signal ?? undefined });
 }

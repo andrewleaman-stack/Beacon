@@ -8,7 +8,8 @@ interface NotificationPulseProps extends HTMLAttributes<HTMLDivElement> {
   count?: number;
 }
 
-const variantStyles: Record<string, React.CSSProperties> = {
+// ringColor isn't a CSS property; it colours the pulsing ring element below.
+const variantStyles: Record<string, { background: string; boxShadow: string; ringColor: string }> = {
   red: {
     background: tokens.colors.alert.red,
     boxShadow: `0 0 6px ${tokens.colors.alert.red}80`,

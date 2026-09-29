@@ -1,44 +1,40 @@
-export interface ThreatEvent {
-  id: string;
-  type: string;
-  title: string;
-  description: string;
-  severity: 'CRITICAL' | 'HIGH' | 'ELEVATED' | 'LOW';
-  region: string;
-  latitude: number;
-  longitude: number;
-  timestamp: string;
-  source: string;
-}
+// Feed/context types live in the AI engine (single source of truth).
+export type {
+  EarthquakeEvent,
+  NewsItem,
+  ThreatEvent,
+  CyberAlert,
+  IntelligenceContext,
+} from '@/lib/ai-engine';
 
-export interface CyberAlert {
-  id: string;
-  name: string;
-  vendor: string;
-  product: string;
-  severity: string;
-  date: string;
-  due: string;
-  source: string;
-}
-
-export interface IntelligenceContext {
-  earthquakes: EarthquakeEvent[];
-  news: NewsItem[];
-  threats: ThreatEvent[];
-  cyberAlerts: CyberAlert[];
-  timestamp: string;
-  feedHealth?: Record<string, FeedHealth>;
-}
-
-export type LayerKey = 
-  | 'flights' | 'military' | 'jets' | 'private-fl' | 'satellites' | 'earthquakes' 
-  | 'gdelt' | 'gps-jamming' | 'day-night' | 'cctv' | 'fires' | 'weather' 
-  | 'infrastructure' | 'maritime' | 'maritime-choke' | 'maritime-ships' 
-  | 'live-news' | 'sigint-news' | 'conflict-zones' | 'war-alerts-targets' 
-  | 'war-alerts-lines' | 'balloons' | 'radiation' | 'port-disruptions' 
-  | 'conflict-events' | 'ip-sweep-devices' | 'ip-sweep-pulse' | 'ip-sweep-connections' 
-  | 'scan-targets' | 'sdk-entities' | 'sdk-links' | 'malware-nodes' | 'network-mesh';
+// The layer keys the live dashboard (src/app/page.tsx activeLayers) uses.
+export type LayerKey =
+  | 'flights'
+  | 'private'
+  | 'jets'
+  | 'military'
+  | 'maritime'
+  | 'satellites'
+  | 'balloons'
+  | 'cctv'
+  | 'live_news'
+  | 'news_intel'
+  | 'earthquakes'
+  | 'fires'
+  | 'weather'
+  | 'radiation'
+  | 'port_disruptions'
+  | 'conflict_events'
+  | 'infrastructure'
+  | 'global_incidents'
+  | 'war_alerts'
+  | 'gps_jamming'
+  | 'day_night'
+  | 'cables'
+  | 'sdk_sea'
+  | 'sdk_air'
+  | 'sdk_naval'
+  | 'malware';
 
 export interface ActiveLayers {
   [key: string]: boolean;

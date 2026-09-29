@@ -3,12 +3,12 @@
 import { forwardRef, type HTMLAttributes, type ReactNode } from 'react';
 import { tokens } from '@/ui/tokens';
 
-interface SidebarProps extends HTMLAttributes<HTMLAsideElement> {
+interface SidebarProps extends HTMLAttributes<HTMLElement> {
   width?: number;
   children: ReactNode;
 }
 
-export const Sidebar = forwardRef<HTMLAsideElement, SidebarProps>(
+export const Sidebar = forwardRef<HTMLElement, SidebarProps>(
   ({ width = 280, className = '', children, ...props }, ref) => {
     return (
       <aside

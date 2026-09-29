@@ -1,0 +1,218 @@
+// Streaming briefing helper (from be9fcfc "Phase 3+4"). Not wired to a route yet:
+// POST /api/ai/briefing (src/app/api/ai/briefing/route.ts) is the live handler.
+
+import type { IntelligenceContext } from '@/types/feeds';
+
+interface BriefingRequest {
+  context: IntelligenceContext;
+  role: 'general' | 'chaplain' | 'police';
+  translateNonEnglish: boolean;
+  mode: 'highlights' | 'full';
+}
+
+const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
+const STREAM_TIMEOUT_MS = 45_000;
+
+function buildSystemPrompt(role: string): string {
+  const basePrompt = `You are BEACON Intelligence Analyst — a senior, elite intelligence analyst embedded within the BEACON Global Intelligence Platform. You operate at the level of a Palantir Forward Deployed Engineer crossed with a CIA PDB (Presidential Daily Brief) analyst.
+
+## YOUR ROLE
+- You correlate data across multiple intelligence feeds: seismic monitoring, OSINT news streams, global threat events, and cyber vulnerability databases
+- You identify non-obvious patterns, emerging threat vectors, and cascading risk scenarios
+- You provide ACTIONABLE intelligence — not summaries, but assessments with confidence levels
+- You think in terms of second and third-order effects
+
+## YOUR ANALYTICAL FRAMEWORK
+1. **PATTERN RECOGNITION**: Cross-reference events across feeds. A cyber attack + earthquake + political instability in the same region = elevated compound risk
+2. **THREAT ASSESSMENT**: Rate threats on a CRITICAL / HIGH / ELEVATED / LOW scale with reasoning
+3. **TEMPORAL ANALYSIS**: Identify acceleration patterns — are events clustering? Is frequency increasing?
+4. **GEOSPATIAL CORRELATION**: Events in proximity may be related. Identify geographic hotspots
+5. **CONFIDENCE LEVELS**: Always state your confidence (HIGH / MODERATE / LOW) and cite which data points support your assessment
+
+## OUTPUT FORMAT
+- Use military-style brevity when appropriate
+- Structure responses with clear headers using markdown
+- Lead with the most critical finding (inverted pyramid)
+- Include "BOTTOM LINE UP FRONT (BLUF)" for complex analyses
+- Use tactical notation: DTG (Date-Time Group), AOR (Area of Responsibility), COA (Course of Action)
+- End with "ASSESSMENT CONFIDENCE" and "RECOMMENDED ACTIONS" sections when appropriate
+
+## CONSTRAINTS
+- Never fabricate data points — only analyze what is provided in the context
+- If data is insufficient for a confident assessment, state so explicitly
+- Distinguish between correlation and causation
+- Flag when events may be connected vs. coincidental
+- You are an analyst, not a policymaker — present options, not directives
+
+You have access to the live intelligence context of the BEACON platform. Analyze it with precision.`;
+
+  const roleSpecialization = {
+    chaplain: `
+ROLE SPECIALIZATION: Chaplain/Pastoral Care Perspective
+Focus on human impact, community needs, and spiritual dimensions:
+- Casualties, injuries, and displaced persons
+- Shelter, food, water, and medical needs
+- Emotional and spiritual support requirements
+- Community resilience and coping mechanisms
+- Coordination with faith-based organizations and relief efforts
+- Ethical considerations in response efforts`,
+    police: `
+ROLE SPECIALIZATION: Law Enforcement/Public Safety Perspective
+Focus on operational, tactical, and security implications:
+- Public safety threats and hazard zones
+- Evacuation routes and traffic impacts
+- Resource deployment and mutual aid requirements
+- Crowd control and civil disturbance potential
+- Evidence preservation and investigative considerations
+- Coordination with emergency services and other agencies`,
+  };
+
+  return basePrompt + (roleSpecialization[role as keyof typeof roleSpecialization] || '');
+}
+
+function buildBriefingPrompt(context: IntelligenceContext, mode: string): string {
+  const isHighlights = mode === 'highlights';
+
+  if (isHighlights) {
+    return `Generate a short BEACON Hotspots Brief, not a full world report.
+
+Output requirements:
+- Keep it concise: 3-6 bullets plus a one-sentence BLUF.
+- Focus only on hotspots that matter right now based on provided feed data.
+- Prioritize escalation, public-safety relevance, operational disruption, cyber exposure, and compound risk.
+- Include source references inline using available source names and URLs/links when provided.
+- If an item is low confidence or feed coverage is thin, say so plainly.
+- Do not pad with regions that have no meaningful signal.
+- End with a short "WATCH NEXT" line listing what would change the assessment.`;
+  }
+
+  return `Generate a comprehensive BEACON Daily Intelligence Briefing based on the current operational data. Structure it as follows:
+
+## BEACON INTELLIGENCE BRIEFING
+**Classification:** OPEN SOURCE INTELLIGENCE (OSINT)
+**DTG:** [Current timestamp]
+
+### I. EXECUTIVE SUMMARY
+2-3 sentence overview of the current global threat landscape based on available data.
+
+### II. PRIORITY INTELLIGENCE REQUIREMENTS (PIRs)
+Identify the top 3-5 most significant developments from the data feeds, ranked by assessed impact.
+
+### III. SEISMIC & NATURAL HAZARD ASSESSMENT
+Analyze earthquake data for patterns — clustering, tectonic corridor activity, tsunami risk.
+
+### IV. GEOPOLITICAL & CONFLI CONFLICT INTELLIGENCE
+Synthesize news feeds for conflict escalation patterns, diplomatic shifts, or emerging crises.
+
+### V. CYBER THREAT LANDSCAPE
+Assess active CVEs and cyber alerts for coordinated campaign indicators or critical infrastructure risk.
+
+### VI. COMPOUND RISK SCENARIOS
+Identify where multiple threat vectors intersect (e.g., earthquake near a conflict zone, cyber attack during political instability).
+
+### VII. FORECAST & WATCHLIST
+- **Next 24 Hours**: Most likely developments
+- **Next 72 Hours**: Emerging situations to monitor
+- **Strategic Horizon**: Longer-term trend assessment
+
+### VIII. ASSESSMENT CONFIDENCE
+State overall confidence level and key analytical gaps.
+
+Analyze the provided data thoroughly. Be specific — reference actual events, magnitudes, locations, and CVE IDs from the context.`;
+}
+
+export async function streamBriefing(request: BriefingRequest): Promise<ReadableStream> {
+  const { context, role, translateNonEnglish, mode } = request;
+  const apiKey = process.env.OPENROUTER_API_KEY;
+
+  if (!apiKey) {
+    throw new Error('OPENROUTER_API_KEY not configured');
+  }
+
+  const systemPrompt = buildSystemPrompt(role);
+  const briefingPrompt = buildBriefingPrompt(context, mode);
+
+  const messages = [
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: `${briefingPrompt}\n\nCurrent Intelligence Context:\n${serializeContext(context)}` },
+  ];
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), STREAM_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(OPENROUTER_API_URL, {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'google/gemini-2.5-pro',
+        messages,
+        temperature: 0.3,
+        max_tokens: 4000,
+        stream: true,
+      }),
+    });
+
+    clearTimeout(timeout);
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || `HTTP ${response.status}`);
+    }
+
+    return response.body!;
+  } catch (error) {
+    clearTimeout(timeout);
+    throw error;
+  }
+}
+
+function serializeContext(context: IntelligenceContext): string {
+  const sections: string[] = [];
+  sections.push(`[TIMESTAMP] ${context.timestamp}`);
+
+  if (context.earthquakes.length > 0) {
+    sections.push(`\n[SEISMIC DATA — ${context.earthquakes.length} events]`);
+    for (const eq of context.earthquakes) {
+      const tsunamiFlag = eq.tsunami ? ' ⚠️TSUNAMI' : '';
+      const alertFlag = eq.alert ? ` [ALERT:${eq.alert.toUpperCase()}]` : '';
+      sections.push(
+        `  M${eq.magnitude} | ${eq.location} | ${eq.latitude.toFixed(2)},${eq.longitude.toFixed(2)} | Depth:${eq.depth}km | ${eq.timestamp}${tsunamiFlag}${alertFlag}`
+      );
+    }
+  }
+
+  if (context.news.length > 0) {
+    sections.push(`\n[OSINT NEWS FEED — ${context.news.length} items]`);
+    for (const item of context.news) {
+      const coords = item.coords ? ` | GEO:${item.coords[0].toFixed(2)},${item.coords[1].toFixed(2)}` : '';
+      sections.push(
+        `  RISK:${item.risk_score}/10 | ${item.source} | ${item.title}${coords} | ${item.published} | SRC:${item.link}`
+      );
+    }
+  }
+
+  if (context.threats.length > 0) {
+    sections.push(`\n[THREAT EVENTS — ${context.threats.length} active]`);
+    for (const threat of context.threats) {
+      sections.push(
+        `  ${threat.severity} | ${threat.type} | ${threat.title} | ${threat.region} | ${threat.timestamp}`
+      );
+    }
+  }
+
+  if (context.cyberAlerts.length > 0) {
+    sections.push(`\n[CYBER ALERTS — ${context.cyberAlerts.length} active]`);
+    for (const alert of context.cyberAlerts) {
+      sections.push(
+        `  ${alert.id} | ${alert.severity} | ${alert.vendor}/${alert.product} | ${alert.name} | Due:${alert.due}`
+      );
+    }
+  }
+
+  return sections.join('\n');
+}
