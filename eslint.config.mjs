@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Unfinished Phase 2 page rewrite kept for reference; not part of src/app.
+    "page.tsx",
   ]),
   {
     files: ["**/*.{ts,tsx,js,jsx}"],

@@ -1,7 +1,11 @@
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 import type { LayerKey } from '@/types/feeds';
-import type { DashboardViewSettings, HomeLocation } from '@/lib/dashboard-settings.mjs';
+import { normalizeDashboardViewSettings, normalizeHomeLocation } from '@/lib/dashboard-settings.mjs';
+
+// dashboard-settings.mjs is untyped JS; derive the shapes from its normalizers.
+type DashboardViewSettings = ReturnType<typeof normalizeDashboardViewSettings>;
+type HomeLocation = ReturnType<typeof normalizeHomeLocation>;
 
 // UI State Store
 interface UIState {
@@ -180,16 +184,17 @@ interface LayerState {
 }
 
 const initialLayers: Record<LayerKey, boolean> = {
+  // Mirrors the live dashboard defaults in src/app/page.tsx.
   flights: false,
-  military: false,
+  private: false,
   jets: false,
-  'private-fl': false,
+  military: false,
   maritime: true,
   satellites: false,
   balloons: false,
   cctv: true,
-  'live-news': true,
-  'news-intel': true,
+  live_news: true,
+  news_intel: true,
   earthquakes: true,
   fires: false,
   weather: false,
@@ -206,7 +211,7 @@ const initialLayers: Record<LayerKey, boolean> = {
   sdk_air: true,
   sdk_naval: true,
   malware: false,
-} as const;
+};
 
 export const useLayerStore = create<LayerState>()(
   subscribeWithSelector((set, get) => ({

@@ -3,7 +3,7 @@
 import { forwardRef, type HTMLAttributes } from 'react';
 import { tokens } from '@/ui/tokens';
 
-interface LayerToggleProps extends HTMLAttributes<HTMLButtonElement> {
+interface LayerToggleProps extends Omit<HTMLAttributes<HTMLButtonElement>, 'onChange'> {
   variant?: 'gold' | 'cyan';
   checked?: boolean;
   onChange?: (checked: boolean) => void;

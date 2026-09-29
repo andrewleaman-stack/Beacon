@@ -61,7 +61,7 @@ export const Stat = forwardRef<HTMLDivElement, StatProps>(
             letterSpacing: '-0.02em',
             transition: `text-shadow ${tokens.transitions.normal}`,
           }}
-          onMouseEnter={(e) => (e.currentTarget.style.textShadow = hoverShadow[variant as keyof typeof hoverShadow])}
+          onMouseEnter={(e) => (e.currentTarget.style.textShadow = hoverShadow)}
           onMouseLeave={(e) => (e.currentTarget.style.textShadow = valueShadow)}
         >
           {value}

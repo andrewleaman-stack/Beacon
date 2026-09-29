@@ -7,8 +7,9 @@ interface FeedResponse<T> {
   meta?: Record<string, unknown>;
 }
 
-// Generic feed fetcher
-async function fetchFeed<T>(url: string, transform?: (d: any) => T[]): Promise<T[]> {
+// Generic feed fetcher. R is the resolved shape: most feeds are arrays, but
+// markets, space weather and maritime return objects.
+async function fetchFeed<R = any>(url: string, transform?: (d: any) => R): Promise<R> {
   const res = await fetch(url, { cache: 'no-store' });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const json = await res.json();
@@ -19,7 +20,7 @@ async function fetchFeed<T>(url: string, transform?: (d: any) => T[]): Promise<T
 export function useEarthquakes(options?: Partial<UseQueryOptions<EarthquakeEvent[]>>) {
   return useQuery({
     queryKey: ['earthquakes'],
-    queryFn: () => fetchFeed<EarthquakeEvent>('/api/earthquakes'),
+    queryFn: () => fetchFeed<EarthquakeEvent[]>('/api/earthquakes'),
     staleTime: 5 * 60 * 1000, // 5 min
     refetchInterval: 15 * 60 * 1000, // 15 min
     ...options,
@@ -30,7 +31,7 @@ export function useEarthquakes(options?: Partial<UseQueryOptions<EarthquakeEvent
 export function useNews(options?: Partial<UseQueryOptions<NewsItem[]>>) {
   return useQuery({
     queryKey: ['news'],
-    queryFn: () => fetchFeed<NewsItem>('/api/news'),
+    queryFn: () => fetchFeed<NewsItem[]>('/api/news'),
     staleTime: 10 * 60 * 1000,
     refetchInterval: 30 * 60 * 1000,
     ...options,

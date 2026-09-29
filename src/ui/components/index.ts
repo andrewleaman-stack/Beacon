@@ -11,4 +11,4 @@ export { LayerToggle } from './LayerToggle';
 export { NotificationPulse } from './NotificationPulse';
 export { CommandBar } from './CommandBar';
 
-export * from './tokens';
+export * from '../tokens';
