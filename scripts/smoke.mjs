@@ -62,10 +62,20 @@ async function assertHealth() {
   }
 }
 
+// The dashboard calls data routes like this from the browser with no auth
+// header. A 401/403 here means the dashboard would render with no data.
+async function assertDataRouteReachable() {
+  const { response } = await fetchText('/api/earthquakes');
+  if (response.status === 401 || response.status === 403) {
+    throw new Error(`GET /api/earthquakes was refused (HTTP ${response.status}); the dashboard would show no data`);
+  }
+}
+
 try {
   await waitForServer();
   await assertHomePage();
   await assertHealth();
+  await assertDataRouteReachable();
   console.log(`BEACON smoke test passed for ${baseUrl}`);
 } catch (error) {
   console.error(error instanceof Error ? error.message : error);
