@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { answerQuestion } from '@/lib/ai-engine';
+import { isRateLimited, getClientIp } from '@/lib/ssrf-guard';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,6 +26,10 @@ function buildContext(situations: AskSituation[]): string {
 }
 
 export async function POST(request: NextRequest) {
+  if (isRateLimited(`ask:${getClientIp(request)}`, 10)) {
+    return NextResponse.json({ error: 'Too many questions. Wait a minute and try again.', code: 'RATE_LIMITED' }, { status: 429 });
+  }
+
   let body: { question?: string; situations?: AskSituation[] };
   try {
     body = await request.json();
