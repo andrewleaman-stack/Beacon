@@ -20,6 +20,7 @@ import RightDrawer from '@/components/RightDrawer';
 import AIBriefingPanel from '@/components/AIBriefingPanel';
 import DashboardViewControls from '@/components/DashboardViewControls';
 import RegionContextSection from '@/components/RegionContextSection';
+import TrackPanel, { type TrackTarget } from '@/components/TrackPanel';
 import {
   DEFAULT_DASHBOARD_VIEW_SETTINGS,
   DEFAULT_HOME_LOCATION,
@@ -167,6 +168,7 @@ export default function Dashboard() {
     infrastructure: false,
     global_incidents: true,
     wiki_surges: false,
+    launches: false,
     war_alerts: false,
     gps_jamming: false,
     day_night: true,
@@ -347,6 +349,20 @@ export default function Dashboard() {
     }
   }, []);
 
+  // Tracking / nearby panel (popup TRACK and NEARBY buttons)
+  const [trackTarget, setTrackTarget] = useState<TrackTarget | null>(null);
+  const [mapTrack, setMapTrack] = useState<{ trail: [number, number][]; head: [number, number] | null; follow: boolean } | null>(null);
+  useEffect(() => {
+    (window as any).beaconAction = (action: string, payload: any) => {
+      const lat = Number(payload?.lat);
+      const lng = Number(payload?.lng);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+      const kind = action === 'track' && (payload.kind === 'flight' || payload.kind === 'ship') ? payload.kind : 'point';
+      setTrackTarget({ kind, id: String(payload.id || `${lat},${lng}`), label: String(payload.label || 'Target'), lat, lng });
+    };
+    return () => { delete (window as any).beaconAction; };
+  }, []);
+
   // Global handler for map popups to manually open the Intel Graph
   useEffect(() => {
     (window as any).openBeaconIntel = (entity: any) => {
@@ -519,6 +535,11 @@ export default function Dashboard() {
     if (activeLayers.global_incidents && !layerFetchedRef.current.has('gdelt')) {
       fetchEndpoint('/api/gdelt', d => ({ gdelt: d.events }));
       layerFetchedRef.current.add('gdelt');
+    }
+    // Space launches (Launch Library 2)
+    if (activeLayers.launches && !layerFetchedRef.current.has('launches')) {
+      fetchEndpoint('/api/launches', d => ({ launch_pads: d.pads }));
+      layerFetchedRef.current.add('launches');
     }
     // Wikipedia edit surges (refreshed by the effect below)
     if (activeLayers.wiki_surges && !layerFetchedRef.current.has('wiki_surges')) {
@@ -880,7 +901,20 @@ export default function Dashboard() {
           scanTargets={scanTargets}
           demoMode={demoMode}
           visualScale={viewSettings.iconScale}
+          track={mapTrack}
         />
+        {trackTarget && (
+          <div className="absolute bottom-24 right-3 md:right-16 z-[260]">
+            <TrackPanel
+              target={trackTarget}
+              data={data}
+              onClose={() => setTrackTarget(null)}
+              onTrackUpdate={setMapTrack}
+              onRetarget={setTrackTarget}
+              onOpenCamera={(cam: any) => handleEntityClick({ ...cam, type: 'cctv' })}
+            />
+          </div>
+        )}
       </ErrorBoundary>
 
 

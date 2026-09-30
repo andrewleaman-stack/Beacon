@@ -20,6 +20,8 @@ interface BeaconMapProps {
   scanTargets?: any[];
   demoMode?: boolean;
   visualScale?: number;
+  /** Target being tracked: trail as [lng, lat] points, current head, and whether the camera follows. */
+  track?: { trail: [number, number][]; head: [number, number] | null; follow: boolean } | null;
 }
 
 function computeSolarTerminator(): [number, number][] {
@@ -74,8 +76,12 @@ function safeProps(raw: any): any {
 function intelAttr(payload: Record<string, unknown>): string {
   return `data-beacon-intel="${escapeHtml(JSON.stringify(payload))}"`;
 }
+/** A popup button that calls window.beaconAction(action, payload) — tracking and "nearby" lookups. */
+function actionButton(label: string, color: string, action: 'track' | 'nearby', payload: Record<string, unknown>): string {
+  return `<button data-beacon-action="${action}" data-beacon-payload="${escapeHtml(JSON.stringify(payload))}" style="width:100%;margin-top:6px;padding:6px 12px;background:${color}22;border:1px solid ${color}80;color:${color};font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:bold;letter-spacing:0.1em;border-radius:4px;cursor:pointer;">${label}</button>`;
+}
 
-function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightClick, onViewStateChange, flyToLocation, projection = 'globe', mapStyle = 'dark', sweepData, scanTargets = [], demoMode = false, visualScale = 1 }: BeaconMapProps) {
+function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightClick, onViewStateChange, flyToLocation, projection = 'globe', mapStyle = 'dark', sweepData, scanTargets = [], demoMode = false, visualScale = 1, track = null }: BeaconMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const popupRef = useRef<maplibregl.Popup | null>(null);
@@ -200,7 +206,7 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
       createDot(map, 'dot-fire', '#E65100', 10);
       createDot(map, 'dot-cctv', '#7E57C2', 10);
 
-      const sources = ['flights','military','jets','private-fl','satellites','earthquakes','gdelt','gps-jamming','day-night','cctv','fires','weather','infrastructure','maritime','maritime-choke','maritime-ships','live-news','sigint-news','conflict-zones', 'war-alerts-targets', 'war-alerts-lines', 'balloons', 'radiation', 'port-disruptions', 'conflict-events', 'ip-sweep-devices', 'ip-sweep-pulse', 'ip-sweep-connections', 'scan-targets', 'sdk-entities', 'sdk-links', 'malware-nodes', 'network-mesh', 'wiki-surges'];
+      const sources = ['flights','military','jets','private-fl','satellites','earthquakes','gdelt','gps-jamming','day-night','cctv','fires','weather','infrastructure','maritime','maritime-choke','maritime-ships','live-news','sigint-news','conflict-zones', 'war-alerts-targets', 'war-alerts-lines', 'balloons', 'radiation', 'port-disruptions', 'conflict-events', 'ip-sweep-devices', 'ip-sweep-pulse', 'ip-sweep-connections', 'scan-targets', 'sdk-entities', 'sdk-links', 'malware-nodes', 'network-mesh', 'wiki-surges', 'launch-pads', 'track-trail', 'track-head'];
       sources.forEach(s => map.addSource(s, { type: 'geojson', data: EMPTY_FC }));
 
       // Warning icon generator (parameterized — eliminates 3x copy-paste)
@@ -325,6 +331,21 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
       map.addLayer({ id: 'wiki-surge-dots', type: 'circle', source: 'wiki-surges', paint: {
         'circle-radius': ['interpolate', ['linear'], ['get', 'editors'], 4, 5, 20, 11],
         'circle-color': '#ECEFF1', 'circle-opacity': 0.25, 'circle-stroke-width': 2, 'circle-stroke-color': '#ECEFF1', 'circle-stroke-opacity': 0.9,
+      }});
+
+      // Launch pads — orange diamonds-ish rings; brighter when a launch is within 48 h
+      map.addLayer({ id: 'launch-pad-dots', type: 'circle', source: 'launch-pads', paint: {
+        'circle-radius': ['case', ['get', 'soon'], 8, 5],
+        'circle-color': '#FF7043', 'circle-opacity': ['case', ['get', 'soon'], 0.9, 0.5],
+        'circle-stroke-width': 1.5, 'circle-stroke-color': '#FFCCBC',
+      }});
+
+      // Tracked target: trail and head
+      map.addLayer({ id: 'track-trail-line', type: 'line', source: 'track-trail', paint: {
+        'line-color': '#00E5FF', 'line-width': 2.5, 'line-opacity': 0.85, 'line-dasharray': [2, 1],
+      }});
+      map.addLayer({ id: 'track-head-dot', type: 'circle', source: 'track-head', paint: {
+        'circle-radius': 9, 'circle-color': 'rgba(0,229,255,0.15)', 'circle-stroke-width': 2.5, 'circle-stroke-color': '#00E5FF',
       }});
 
       // GPS Jamming — crimson
@@ -644,6 +665,12 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
           try { (window as any).openBeaconIntel?.(JSON.parse(el.dataset.beaconIntel || '{}')); } catch { /* ignore */ }
         });
       });
+      popupRef.current.getElement()?.querySelectorAll<HTMLElement>('[data-beacon-action]').forEach((el) => {
+        el.addEventListener('click', () => {
+          try { (window as any).beaconAction?.(el.dataset.beaconAction, JSON.parse(el.dataset.beaconPayload || '{}')); } catch { /* ignore */ }
+          popupRef.current?.remove();
+        });
+      });
     };
     const pStyle = `background:rgba(12,14,26,0.95);backdrop-filter:blur(16px);border-radius:10px;padding:16px;font-family:'JetBrains Mono',monospace;`;
     const linkStyle = `display:inline-block;margin-top:8px;padding:5px 12px;font-size:10px;letter-spacing:0.12em;text-decoration:none;border-radius:5px;font-family:'JetBrains Mono',monospace;`;
@@ -674,6 +701,7 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
             <a href="https://globe.adsbexchange.com/?icao=${p.icao24||''}" target="_blank" style="${linkStyle}color:#00E5FF;border:1px solid rgba(0,229,255,0.4);background:rgba(0,229,255,0.1);">📡 ADS-B</a>
             <a href="https://www.radarbox.com/data/flights/${cs}" target="_blank" style="${linkStyle}color:#FF69B4;border:1px solid rgba(255,105,180,0.4);background:rgba(255,105,180,0.1);">📍 RADARBOX</a>
           </div>
+          ${raw.icao24 ? actionButton('[ TRACK ]', '#00E5FF', 'track', { kind: 'flight', id: String(raw.icao24), label: cs || String(raw.icao24), lat: coords[1], lng: coords[0] }) : ''}
           <button ${intelAttr({ callsign: String(raw.callsign || '').trim(), icao24: raw.icao24 || '', model: raw.model || '', registration: raw.registration || '' })} style="width:100%;margin-top:8px;padding:6px 12px;background:rgba(212,175,55,0.15);border:1px solid rgba(212,175,55,0.5);color:#D4AF37;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:bold;letter-spacing:0.1em;border-radius:4px;cursor:pointer;">[ DEEP DIVE INTEL ]</button>
         </div>`);
       });
@@ -719,6 +747,7 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
           <div><span style="color:#5C5A54;">COORDS</span><br/><span style="color:#E8E6E0;">${coords[1].toFixed(3)}, ${coords[0].toFixed(3)}</span></div>
         </div>
         <a href="${p.source === 'NIGGG-BAS' ? 'https://ndc.niggg.bas.bg/' : `https://earthquake.usgs.gov/earthquakes/eventpage/${p.id||''}`}" target="_blank" style="${linkStyle}color:#FF9500;border:1px solid rgba(255,149,0,0.4);background:rgba(255,149,0,0.1);">📊 ${p.source === 'NIGGG-BAS' ? 'NIGGG-BAS' : 'USGS DETAILS'}</a>
+        ${actionButton('[ NEARBY ]', '#FF9500', 'nearby', { kind: 'point', label: `M${raw.magnitude} ${raw.place || 'earthquake'}`, lat: coords[1], lng: coords[0] })}
       </div>`);
     });
 
@@ -752,6 +781,7 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
           <div><span style="color:#5C5A54;">COORDS</span><br/><span style="color:#E8E6E0;">${coords[1].toFixed(3)}°, ${coords[0].toFixed(3)}°</span></div>
         </div>
         <a href="https://firms.modaps.eosdis.nasa.gov/map/#d:24hrs;l:noaa20-viirs,viirs,modis_a,modis_t;@${coords[0]},${coords[1]},10z" target="_blank" style="${linkStyle}color:#FF6B00;border:1px solid rgba(255,107,0,0.4);background:rgba(255,107,0,0.1);">🛰️ NASA FIRMS MAP</a>
+        ${actionButton('[ NEARBY ]', '#FF6B00', 'nearby', { kind: 'point', label: 'Active fire', lat: coords[1], lng: coords[0] })}
       </div>`);
     });
 
@@ -782,6 +812,28 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
     });
 
 
+    // ── Launch pads ──
+    map.on('click', 'launch-pad-dots', e => {
+      if (!e.features?.length) return;
+      const p = safeProps(e.features[0].properties as any);
+      const coords = (e.features[0].geometry as any).coordinates;
+      const launches: any[] = (() => { try { return JSON.parse(p.launches || '[]'); } catch { return []; } })();
+      const rows = launches.slice(0, 6).map((l: any) => {
+        const when = l.net ? new Date(l.net).toUTCString().replace(':00 GMT', 'Z') : 'TBD';
+        return `<div style="border-top:1px solid rgba(255,112,67,0.25);padding-top:6px;margin-top:6px;">
+          <div style="font-size:10px;color:#E8E6E0;font-weight:700;">${l.name}</div>
+          <div style="font-size:9px;color:#aaa;">${l.provider}${l.orbit ? ` · ${l.orbit}` : ''} · <span style="color:${l.when === 'recent' ? '#8A8880' : '#FF7043'};">${l.when === 'recent' ? 'launched' : l.status}</span></div>
+          <div style="font-size:9px;color:#8A8880;">${when}${l.webcastLive ? ' · 🔴 LIVE' : ''}</div>
+        </div>`;
+      }).join('');
+      popup(coords, `<div style="${pStyle}border:1px solid rgba(255,112,67,0.35);">
+        <div style="color:#FF7043;font-size:12px;font-weight:700;">🚀 ${p.padName}</div>
+        <div style="font-size:9px;color:#aaa;">${p.location}</div>
+        ${rows}
+        <div style="font-size:8px;color:#5C5A54;margin-top:8px;">Launch Library 2 — The Space Devs</div>
+      </div>`);
+    });
+
     // ── Wikipedia edit surges ──
     map.on('click', 'wiki-surge-dots', e => {
       if (!e.features?.length) return;
@@ -797,6 +849,7 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
           <a href="${p.url}" target="_blank" rel="noopener" style="${linkStyle}flex:1;text-align:center;color:#ECEFF1;border:1px solid rgba(236,239,241,0.4);">ARTICLE ↗</a>
           <a href="${p.historyUrl}" target="_blank" rel="noopener" style="${linkStyle}flex:1;text-align:center;color:#ECEFF1;border:1px solid rgba(236,239,241,0.4);">EDIT HISTORY ↗</a>
         </div>
+        ${actionButton('[ NEARBY ]', '#ECEFF1', 'nearby', { kind: 'point', label: String(raw.title || 'Wikipedia surge'), lat: coords[1], lng: coords[0] })}
       </div>`);
     });
 
@@ -824,6 +877,7 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
         <div style="color:#FF3D3D;font-size:12px;font-weight:700;margin-bottom:6px;">⚠️ CONFLICT EVENT</div>
         <div style="font-size:9px;color:#E8E6E0;margin-bottom:8px;line-height:1.4;">${p.name||'Unclassified incident'}</div>
         <a href="${sourceUrl}" target="_blank" style="${linkStyle}flex:1;text-align:center;color:#FF3D3D;border:1px solid rgba(255,61,61,0.4);background:rgba(255,61,61,0.15);display:inline-block;width:100%;box-sizing:border-box;margin-top:4px;">[ OPEN SOURCE ↗ ]</a>
+        ${actionButton('[ NEARBY ]', '#FF3D3D', 'nearby', { kind: 'point', label: String(raw.name || 'Incident'), lat: coords[1], lng: coords[0] })}
       </div>`);
     });
 
@@ -882,7 +936,7 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
     });
 
     // ── Generic hover for clickables ──
-    ['conflict-icons','cctv-dots','eq-circles','sat-dots','fires-heat','gdelt-dots','weather-dots','infra-dots','maritime-dots','choke-dots','news-dots','sigint-news-dots','balloon-dots','rad-dots','ship-dots','sweep-device-dots','scan-targets-dots','sdk-sea','sdk-sea-glow','sdk-sea-atmo','sdk-air','sdk-air-glow','sdk-air-atmo','sdk-intel','sdk-intel-glow','sdk-intel-atmo','malware-dots','wiki-surge-dots'].forEach(layer => {
+    ['conflict-icons','cctv-dots','eq-circles','sat-dots','fires-heat','gdelt-dots','weather-dots','infra-dots','maritime-dots','choke-dots','news-dots','sigint-news-dots','balloon-dots','rad-dots','ship-dots','sweep-device-dots','scan-targets-dots','sdk-sea','sdk-sea-glow','sdk-sea-atmo','sdk-air','sdk-air-glow','sdk-air-atmo','sdk-intel','sdk-intel-glow','sdk-intel-atmo','malware-dots','wiki-surge-dots','launch-pad-dots'].forEach(layer => {
       map.on('mouseenter', layer, () => { map.getCanvas().style.cursor = 'pointer'; });
       map.on('mouseleave', layer, () => { map.getCanvas().style.cursor = ''; });
     });
@@ -1012,7 +1066,8 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
           <div><span style="color:#5C5A54;">LONGITUDE</span><br/><span style="color:#E8E6E0;font-family:monospace;">${coords[0].toFixed(4)}°</span></div>
         </div>
         <div><span style="color:#5C5A54;font-size:9px;">DESTINATION: </span><span style="color:#E8E6E0;font-size:9px;">${p.destination || 'UNKNOWN'}</span></div>
-        <a href="https://www.marinetraffic.com/en/ais/details/ships/mmsi:${p.mmsi}" target="_blank" style="${linkStyle}flex:1;text-align:center;color:${color};border:1px solid ${color}40;background:${color}15;display:inline-block;width:100%;box-sizing:border-box;margin-top:4px;">[ OPEN SOURCE ↗ ]</a>
+        ${p.mmsi ? `<a href="https://www.marinetraffic.com/en/ais/details/ships/mmsi:${p.mmsi}" target="_blank" style="${linkStyle}flex:1;text-align:center;color:${color};border:1px solid ${color}40;background:${color}15;display:inline-block;width:100%;box-sizing:border-box;margin-top:4px;">[ OPEN SOURCE ↗ ]</a>` : ''}
+        ${raw.mmsi ? actionButton('[ TRACK ]', color, 'track', { kind: 'ship', id: String(raw.mmsi), label: String(raw.name || raw.mmsi), lat: coords[1], lng: coords[0] }) : ''}
       </div>`);
     });
 
@@ -1190,6 +1245,31 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
     })));
   }, [mapReady, data.wiki_surges, activeLayers.wiki_surges, setGeo]);
 
+  useEffect(() => {
+    if (!mapReady) return;
+    const pads = activeLayers.launches && Array.isArray(data.launch_pads) ? data.launch_pads : [];
+    const soonCutoff = Date.now() + 48 * 3600_000;
+    setGeo('launch-pads', pads.map((pad: any) => ({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [pad.lng, pad.lat] },
+      properties: {
+        padName: pad.padName,
+        location: pad.location,
+        launches: JSON.stringify(pad.launches),
+        soon: pad.launches.some((l: any) => l.when === 'upcoming' && l.net && Date.parse(l.net) <= soonCutoff),
+      },
+    })));
+  }, [mapReady, data.launch_pads, activeLayers.launches, setGeo]);
+
+  // Tracked target trail + optional camera follow
+  useEffect(() => {
+    if (!mapReady || !mapRef.current) return;
+    const trail = track?.trail || [];
+    setGeo('track-trail', trail.length > 1 ? [{ type: 'Feature', geometry: { type: 'LineString', coordinates: trail }, properties: {} }] : []);
+    setGeo('track-head', track?.head ? [{ type: 'Feature', geometry: { type: 'Point', coordinates: track.head }, properties: {} }] : []);
+    if (track?.follow && track.head) mapRef.current.easeTo({ center: track.head as [number, number], duration: 800 });
+  }, [mapReady, track, setGeo]);
+
   // Malware Threats
   useEffect(() => {
     if (!mapReady) return;
@@ -1249,7 +1329,7 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
     if (!mapReady) return;
     setGeo('maritime', activeLayers.maritime && data.maritime_ports ? data.maritime_ports.map((p: any) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [p.lng, p.lat] }, properties: { name: p.name, country: p.country, type: p.type, volume: p.volume, fleet: p.fleet, rank: p.rank } })) : []);
     setGeo('maritime-choke', activeLayers.maritime && data.maritime_chokepoints ? data.maritime_chokepoints.map((c: any) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [c.lng, c.lat] }, properties: { name: c.name, traffic: c.traffic, risk: c.risk } })) : []);
-    setGeo('maritime-ships', activeLayers.maritime && data.maritime_ships ? data.maritime_ships.map((s: any) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [s.lng, s.lat] }, properties: { name: s.name || s.mmsi?.toString(), type: s.type || 'cargo', speed: s.speed, heading: s.heading, destination: s.destination, flag: s.flag } })) : []);
+    setGeo('maritime-ships', activeLayers.maritime && data.maritime_ships ? data.maritime_ships.map((s: any) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [s.lng, s.lat] }, properties: { name: s.name || s.mmsi?.toString(), mmsi: s.mmsi, type: s.type || 'cargo', speed: s.speed, heading: s.heading, destination: s.destination, flag: s.flag } })) : []);
   }, [mapReady, data.maritime_ports, data.maritime_chokepoints, data.maritime_ships, activeLayers.maritime, setGeo]);
 
   useEffect(() => {
@@ -1365,6 +1445,7 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
     setVis(['sat-dots'], activeLayers.satellites);
     setVis(['gdelt-dots'], activeLayers.global_incidents);
     setVis(['wiki-surge-dots'], activeLayers.wiki_surges);
+    setVis(['launch-pad-dots'], activeLayers.launches);
 
     setVis(['malware-glow','malware-dots','malware-label'], activeLayers.malware);
     setVis(['network-mesh-atmo', 'network-mesh-glow', 'network-mesh-core'], activeLayers.internet_outages || activeLayers.malware);
