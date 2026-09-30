@@ -24,6 +24,7 @@
     "test:tsunami": "node --test scripts/nws-tsunami.test.mjs",
     "test:expanded-feeds": "node --test scripts/expanded-feeds.test.mjs",
     "test:transport-cable-feeds": "node --test scripts/transport-cable-feeds.test.mjs",
+    "test:place-watch": "node --test scripts/place-watch.test.mjs",
     "test:launches": "node --test scripts/launches.test.mjs",
     "test:geo-nearby": "node --test scripts/geo-nearby.test.mjs",
     "test:gdelt-events": "node --test scripts/gdelt-events.test.mjs",
