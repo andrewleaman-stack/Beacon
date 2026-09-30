@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { fetchWorldBankIndicators, fetchWorldBankCountry, fetchLocalSun, flagEmoji } from '@/lib/region-context.mjs';
 
 /**
  * BEACON — Region Dossier API
@@ -17,7 +18,7 @@ export async function GET(request: Request) {
       `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&zoom=5&addressdetails=1`,
       {
         signal: AbortSignal.timeout(8000),
-        headers: { 'User-Agent': 'BeaconIntelPlatform/1.0' },
+        headers: { 'User-Agent': 'BEACON/1.0 (+https://github.com/andrewleaman-stack/Beacon)' },
       }
     );
 
@@ -40,20 +41,10 @@ export async function GET(request: Request) {
     }
 
     // Steps 2–4: Run in PARALLEL after geocode (Fixes #115 — was a sequential waterfall)
-    const [countryResult, wikiResult, hosResult] = await Promise.allSettled([
+    const [countryResult, wikiResult, hosResult, indicatorsResult, sunResult] = await Promise.allSettled([
 
-      // Step 2: Fetch country details from RestCountries
-      (async () => {
-        if (!countryCode) return null;
-        try {
-          const res = await fetch(
-            `https://restcountries.com/v3.1/alpha/${countryCode}?fields=name,capital,population,area,region,subregion,languages,currencies,flag,flags,timezones`,
-            { signal: AbortSignal.timeout(5000) }
-          );
-          if (res.ok) return await res.json();
-        } catch (e) { console.warn('[BEACON] Country fetch error:', e instanceof Error ? e.message : e); }
-        return null;
-      })(),
+      // Step 2: Country details (World Bank; restcountries v3 now requires a paid key)
+      fetchWorldBankCountry(countryCode),
 
       // Step 3: Fetch Wikipedia summary
       (async () => {
@@ -78,22 +69,22 @@ export async function GET(request: Request) {
 
       // Step 4: Fetch head of state from Wikidata SPARQL
       (async () => {
-        if (!countryName) return null;
+        // Match on the ISO code: Nominatim names are localized ("Perú") and miss English labels.
+        if (!/^[A-Z]{2}$/.test(countryCode)) return null;
         try {
-          // Sanitize country name for SPARQL string literal
-          const safe = countryName.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-          const sparql = `SELECT ?leader ?leaderLabel ?positionLabel WHERE {
-            ?country wdt:P31 wd:Q6256;
-                     rdfs:label "${safe}"@en;
-                     wdt:P6 ?leader.
-            OPTIONAL { ?leader wdt:P39 ?position. }
+          // Head of state (P35), falling back to head of government (P6).
+          const sparql = `SELECT ?leaderLabel ?role WHERE {
+            ?country wdt:P297 "${countryCode}".
+            { ?country wdt:P35 ?leader. BIND("Head of State" AS ?role) }
+            UNION
+            { ?country wdt:P6 ?leader. BIND("Head of Government" AS ?role) }
             SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
-          } LIMIT 1`;
+          } ORDER BY DESC(?role) LIMIT 1`;
           const res = await fetch(
             `https://query.wikidata.org/sparql?format=json&query=${encodeURIComponent(sparql)}`,
             {
               signal: AbortSignal.timeout(5000),
-              headers: { 'User-Agent': 'BeaconIntelPlatform/1.0' },
+              headers: { 'User-Agent': 'BEACON/1.0 (+https://github.com/andrewleaman-stack/Beacon)' },
             }
           );
           if (res.ok) {
@@ -102,40 +93,45 @@ export async function GET(request: Request) {
             if (binding) {
               return {
                 name: binding.leaderLabel?.value,
-                position: binding.positionLabel?.value || 'Head of State',
+                position: binding.role?.value || 'Head of State',
               };
             }
           }
         } catch (e) { console.warn('[BEACON] Wikidata fetch error:', e instanceof Error ? e.message : e); }
         return null;
       })(),
+
+      // Step 5: World Bank development indicators for the country
+      fetchWorldBankIndicators(countryCode),
+
+      // Step 6: Local time zone and sunrise/sunset at the clicked point
+      fetchLocalSun(lat, lng),
     ]);
 
     const countryData = countryResult.status === 'fulfilled' ? countryResult.value : null;
     const wikiSummary  = wikiResult.status   === 'fulfilled' ? wikiResult.value   : null;
     const headOfState  = hosResult.status    === 'fulfilled' ? hosResult.value    : null;
+    const allIndicators = indicatorsResult.status === 'fulfilled' ? indicatorsResult.value : [];
+    const indicators   = allIndicators.filter((i) => !i.summary);
+    const summary      = Object.fromEntries(allIndicators.filter((i) => i.summary).map((i) => [i.key, i.value]));
+    const localSun     = sunResult.status    === 'fulfilled' ? sunResult.value    : null;
 
     return NextResponse.json({
       coordinates: { lat, lng },
       location: locationInfo,
       country: countryData ? {
-        name: countryData.name?.common,
-        official_name: countryData.name?.official,
-        capital: countryData.capital?.[0],
-        population: countryData.population,
-        area: countryData.area,
+        name: countryData.name,
+        capital: countryData.capital,
+        population: summary.population,
+        area: summary.area,
         region: countryData.region,
-        subregion: countryData.subregion,
-        languages: countryData.languages ? Object.values(countryData.languages) : [],
-        currencies: countryData.currencies
-          ? Object.entries(countryData.currencies).map(([code, info]: [string, any]) => `${info.name} (${info.symbol || code})`)
-          : [],
-        flag: countryData.flag,
-        flag_url: countryData.flags?.svg,
-        timezones: countryData.timezones,
+        income_level: countryData.incomeLevel,
+        flag: flagEmoji(countryData.iso2),
       } : null,
       head_of_state: headOfState,
       wikipedia: wikiSummary,
+      indicators,
+      local_sun: localSun,
       timestamp: new Date().toISOString(),
     }, {
       headers: {

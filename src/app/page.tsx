@@ -19,6 +19,7 @@ import LowerDrawer from '@/components/LowerDrawer';
 import RightDrawer from '@/components/RightDrawer';
 import AIBriefingPanel from '@/components/AIBriefingPanel';
 import DashboardViewControls from '@/components/DashboardViewControls';
+import RegionContextSection from '@/components/RegionContextSection';
 import {
   DEFAULT_DASHBOARD_VIEW_SETTINGS,
   DEFAULT_HOME_LOCATION,
@@ -165,6 +166,8 @@ export default function Dashboard() {
     war_alerts: false,
     gps_jamming: false,
     day_night: true,
+    imagery_live: false,
+    imagery_truecolor: false,
     cables: true,
     sdk_sea: true,
     sdk_air: true,
@@ -1307,11 +1310,12 @@ export default function Dashboard() {
                     <div><div className="hud-label mb-0.5">COUNTRY</div><div className="text-xs text-[var(--text-primary)]">{regionDossier.country.flag} {regionDossier.country.name}</div></div>
                     <div><div className="hud-label mb-0.5">CAPITAL</div><div className="text-xs text-[var(--text-primary)]">{regionDossier.country.capital}</div></div>
                     <div><div className="hud-label mb-0.5">POPULATION</div><div className="text-xs text-[var(--text-primary)]">{regionDossier.country.population?.toLocaleString()}</div></div>
-                    <div><div className="hud-label mb-0.5">REGION</div><div className="text-xs text-[var(--text-primary)]">{regionDossier.country.subregion || regionDossier.country.region}</div></div>
-                    <div><div className="hud-label mb-0.5">LANGUAGES</div><div className="text-xs text-[var(--text-primary)]">{regionDossier.country.languages?.join(', ')}</div></div>
-                    <div><div className="hud-label mb-0.5">AREA</div><div className="text-xs text-[var(--text-primary)]">{regionDossier.country.area?.toLocaleString()} km²</div></div>
+                    <div><div className="hud-label mb-0.5">REGION</div><div className="text-xs text-[var(--text-primary)]">{regionDossier.country.region || '—'}</div></div>
+                    <div><div className="hud-label mb-0.5">INCOME LEVEL</div><div className="text-xs text-[var(--text-primary)]">{regionDossier.country.income_level || '—'}</div></div>
+                    <div><div className="hud-label mb-0.5">AREA</div><div className="text-xs text-[var(--text-primary)]">{regionDossier.country.area ? `${Math.round(regionDossier.country.area).toLocaleString()} km²` : '—'}</div></div>
                   </div>
                 )}
+                <RegionContextSection localSun={regionDossier.local_sun} indicators={regionDossier.indicators} />
                 {regionDossier.head_of_state && (<div><div className="hud-label mb-0.5">HEAD OF STATE</div><div className="text-xs text-[var(--gold-primary)]">{regionDossier.head_of_state.name}</div><div className="text-[8px] text-[var(--text-muted)]">{regionDossier.head_of_state.position}</div></div>)}
                 {regionDossier.wikipedia && (<div><div className="hud-label mb-1">INTELLIGENCE BRIEF</div><div className="flex gap-3">{regionDossier.wikipedia.thumbnail && <img src={regionDossier.wikipedia.thumbnail} alt="" className="w-14 h-14 rounded object-cover flex-shrink-0" />}<p className="text-[8px] text-[var(--text-secondary)] leading-relaxed">{regionDossier.wikipedia.extract}</p></div></div>)}
               </div>
