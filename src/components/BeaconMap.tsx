@@ -42,6 +42,37 @@ function computeSolarTerminator(): [number, number][] {
 
 const EMPTY_FC = { type: 'FeatureCollection' as const, features: [] };
 
+// Popup HTML is built from third-party feed text (headlines, callsigns, place
+// names), so every string property is HTML-escaped before interpolation and
+// URL-like fields must be http(s).
+function escapeHtml(value: string): string {
+  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+function escapeDeep(value: any): any {
+  if (typeof value === 'string') return escapeHtml(value);
+  if (Array.isArray(value)) return value.map(escapeDeep);
+  if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, escapeDeep(v)]));
+  return value;
+}
+function safeProps(raw: any): any {
+  const out: Record<string, any> = {};
+  for (const [key, value] of Object.entries(raw || {})) {
+    if (typeof value !== 'string') { out[key] = value; continue; }
+    const trimmed = value.trim();
+    if (/url|link|href/i.test(key) && trimmed && !/^https?:\/\//i.test(trimmed)) { out[key] = ''; continue; }
+    // Array/object properties arrive JSON-encoded; escape their contents and keep them parseable.
+    if (/^[\[{]/.test(trimmed)) {
+      try { out[key] = JSON.stringify(escapeDeep(JSON.parse(trimmed))); continue; } catch { /* not JSON */ }
+    }
+    out[key] = escapeHtml(value);
+  }
+  return out;
+}
+/** Attribute that popup() wires to window.openBeaconIntel, instead of inline onclick JS. */
+function intelAttr(payload: Record<string, unknown>): string {
+  return `data-beacon-intel="${escapeHtml(JSON.stringify(payload))}"`;
+}
+
 function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightClick, onViewStateChange, flyToLocation, projection = 'globe', mapStyle = 'dark', sweepData, scanTargets = [], demoMode = false, visualScale = 1 }: BeaconMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -600,6 +631,11 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
     const popup = (coords: any, html: string) => {
       popupRef.current?.remove();
       popupRef.current = new maplibregl.Popup({ closeButton: true, maxWidth: '420px', offset: 14 }).setLngLat(coords).setHTML(html).addTo(map);
+      popupRef.current.getElement()?.querySelectorAll<HTMLElement>('[data-beacon-intel]').forEach((el) => {
+        el.addEventListener('click', () => {
+          try { (window as any).openBeaconIntel?.(JSON.parse(el.dataset.beaconIntel || '{}')); } catch { /* ignore */ }
+        });
+      });
     };
     const pStyle = `background:rgba(12,14,26,0.95);backdrop-filter:blur(16px);border-radius:10px;padding:16px;font-family:'JetBrains Mono',monospace;`;
     const linkStyle = `display:inline-block;margin-top:8px;padding:5px 12px;font-size:10px;letter-spacing:0.12em;text-decoration:none;border-radius:5px;font-family:'JetBrains Mono',monospace;`;
@@ -608,7 +644,8 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
     ['fl-commercial','fl-private','fl-jets','fl-military'].forEach(layer => {
       map.on('click', layer, e => {
         if (!e.features?.length) return;
-        const p = e.features[0].properties as any;
+        const raw = e.features[0].properties as any;
+        const p = safeProps(raw);
         const coords = (e.features[0].geometry as any).coordinates;
         const cs = (p.callsign||'').trim();
         popup(coords, `<div style="${pStyle}border:1px solid rgba(212,175,55,0.3);">
@@ -629,7 +666,7 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
             <a href="https://globe.adsbexchange.com/?icao=${p.icao24||''}" target="_blank" style="${linkStyle}color:#00E5FF;border:1px solid rgba(0,229,255,0.4);background:rgba(0,229,255,0.1);">📡 ADS-B</a>
             <a href="https://www.radarbox.com/data/flights/${cs}" target="_blank" style="${linkStyle}color:#FF69B4;border:1px solid rgba(255,105,180,0.4);background:rgba(255,105,180,0.1);">📍 RADARBOX</a>
           </div>
-          <button onclick="window.openBeaconIntel({ callsign: '${cs}', icao24: '${p.icao24||''}', model: '${p.model||''}', registration: '${p.registration||''}' })" style="width:100%;margin-top:8px;padding:6px 12px;background:rgba(212,175,55,0.15);border:1px solid rgba(212,175,55,0.5);color:#D4AF37;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:bold;letter-spacing:0.1em;border-radius:4px;cursor:pointer;">[ DEEP DIVE INTEL ]</button>
+          <button ${intelAttr({ callsign: String(raw.callsign || '').trim(), icao24: raw.icao24 || '', model: raw.model || '', registration: raw.registration || '' })} style="width:100%;margin-top:8px;padding:6px 12px;background:rgba(212,175,55,0.15);border:1px solid rgba(212,175,55,0.5);color:#D4AF37;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:bold;letter-spacing:0.1em;border-radius:4px;cursor:pointer;">[ DEEP DIVE INTEL ]</button>
         </div>`);
       });
       map.on('mouseenter', layer, () => { map.getCanvas().style.cursor = 'pointer'; });
@@ -663,7 +700,8 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
     // ── Earthquakes (with USGS link) ──
     map.on('click', 'eq-circles', e => {
       if (!e.features?.length) return;
-      const p = e.features[0].properties as any;
+      const raw = e.features[0].properties as any;
+      const p = safeProps(raw);
       const coords = (e.features[0].geometry as any).coordinates;
       popup(coords, `<div style="${pStyle}border:1px solid rgba(255,149,0,0.3);">
         <div style="color:#FF9500;font-size:14px;font-weight:700;margin-bottom:4px;">M${p.magnitude} EARTHQUAKE</div>
@@ -679,7 +717,8 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
     // ── Satellites (SatNOGS powered) ──
     map.on('click', 'sat-dots', e => {
       if (!e.features?.length) return;
-      const p = e.features[0].properties as any;
+      const raw = e.features[0].properties as any;
+      const p = safeProps(raw);
       const coords = (e.features[0].geometry as any).coordinates;
       popup(coords, `<div style="${pStyle}border:1px solid rgba(212,175,55,0.3);">
         <div style="color:#D4AF37;font-size:12px;font-weight:700;letter-spacing:0.1em;margin-bottom:4px;">🛰️ ${p.name}</div>
@@ -695,7 +734,8 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
     // ── Fires (with NASA FIRMS link) ──
     map.on('click', 'fires-heat', e => {
       if (!e.features?.length) return;
-      const p = e.features[0].properties as any;
+      const raw = e.features[0].properties as any;
+      const p = safeProps(raw);
       const coords = (e.features[0].geometry as any).coordinates;
       popup(coords, `<div style="${pStyle}border:1px solid rgba(255,107,0,0.3);">
         <div style="color:#FF6B00;font-size:12px;font-weight:700;margin-bottom:6px;">🔥 ACTIVE FIRE DETECTED</div>
@@ -710,7 +750,8 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
     // ── Malware Threats (Abuse.ch) ──
     map.on('click', 'malware-dots', e => {
       if (!e.features?.length) return;
-      const p = e.features[0].properties as any;
+      const raw = e.features[0].properties as any;
+      const p = safeProps(raw);
       const coords = (e.features[0].geometry as any).coordinates;
       const tType = (p.threat_type || 'MALWARE').toUpperCase();
       const statusColor = p.status === 'online' ? '#39FF14' : '#FF1744';
@@ -728,7 +769,7 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
         <div style="display:flex;gap:6px;">
           <a href="https://feodotracker.abuse.ch/browse/" target="_blank" style="${linkStyle}flex:1;text-align:center;color:#E8E6E0;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.05);">THREAT INTEL ↗</a>
         </div>
-        <button onclick="window.openBeaconIntel({ type: 'ip', ip: '${p.ip}', threat_type: '${p.malware || p.threat_type || ''}', status: '${p.status || ''}' })" style="width:100%;margin-top:8px;padding:8px 12px;background:linear-gradient(90deg, rgba(255,23,68,0.1) 0%, rgba(255,23,68,0.2) 100%);border:1px solid rgba(255,23,68,0.6);color:#FF1744;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:bold;letter-spacing:0.15em;border-radius:4px;cursor:pointer;transition:all 0.2s;">DEEP DIVE ANALYTICS</button>
+        <button ${intelAttr({ type: 'ip', ip: raw.ip, threat_type: raw.malware || raw.threat_type || '', status: raw.status || '' })} style="width:100%;margin-top:8px;padding:8px 12px;background:linear-gradient(90deg, rgba(255,23,68,0.1) 0%, rgba(255,23,68,0.2) 100%);border:1px solid rgba(255,23,68,0.6);color:#FF1744;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:bold;letter-spacing:0.15em;border-radius:4px;cursor:pointer;transition:all 0.2s;">DEEP DIVE ANALYTICS</button>
       </div>`);
     });
 
@@ -736,7 +777,8 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
     // ── GDELT Conflicts (with source article) ──
     map.on('click', 'gdelt-dots', e => {
       if (!e.features?.length) return;
-      const p = e.features[0].properties as any;
+      const raw = e.features[0].properties as any;
+      const p = safeProps(raw);
       const coords = (e.features[0].geometry as any).coordinates;
       
       // Map coordinates to Liveuamap regions
@@ -762,7 +804,8 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
     // ── Global Event / Conflict Markers ──
     map.on('click', 'conflict-icons', e => {
       if (!e.features?.length) return;
-      const p = e.features[0].properties as any;
+      const raw = e.features[0].properties as any;
+      const p = safeProps(raw);
       const coords = (e.features[0].geometry as any).coordinates;
       const color = p.severity === 'war' ? '#FF1744' : p.severity === 'high' ? '#FF9500' : '#FFD500';
       popup(coords, `<div style="${pStyle}border:1px solid ${color}40;">
@@ -789,7 +832,8 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
     ['sdk-sea','sdk-sea-glow','sdk-air','sdk-air-glow','sdk-intel','sdk-intel-glow'].forEach(layer => {
       map.on('click', layer, e => {
         if (!e.features?.length) return;
-        const p = e.features[0].properties as any;
+        const raw = e.features[0].properties as any;
+        const p = safeProps(raw);
         const coords = e.lngLat;
         const srcUrl = p.url || SDK_SOURCE_URLS[p.source] || 'https://beacon.live';
         const domainLabel = p.domain === 'SEA' ? '⚓ MARITIME' : p.domain === 'AIR' ? '✈ AIR CORRIDOR' : '🛡 NAVAL INTEL';
@@ -819,7 +863,8 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
 
     // ── Scan Targets click ──
     map.on('click', 'scan-targets-dots', (e: any) => {
-      const p = e.features?.[0]?.properties;
+      const raw = e.features?.[0]?.properties;
+      const p = raw ? safeProps(raw) : null;
       if (!p) return;
       const coords = e.features[0].geometry.coordinates.slice();
       popup(coords, `<div style="${pStyle}border:1px solid rgba(255,61,61,0.5);">
@@ -829,14 +874,15 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
           <div><span style="color:#5C5A54;">TYPE</span><br/><span style="color:#00E5FF;">${(p.type || 'UNKNOWN').toUpperCase()}</span></div>
           <div><span style="color:#5C5A54;">COORDS</span><br/><span style="color:#E8E6E0;">${coords[1].toFixed(3)}°, ${coords[0].toFixed(3)}°</span></div>
         </div>
-        <button onclick="window.openBeaconIntel({ type: 'ip', ip: '${p.id}' })" style="width:100%;margin-top:8px;padding:6px 12px;background:rgba(255,109,0,0.15);border:1px solid rgba(255,109,0,0.5);color:#FF6D00;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:bold;letter-spacing:0.1em;border-radius:4px;cursor:pointer;">[ IP INTEL DEEP DIVE ]</button>
+        <button ${intelAttr({ type: 'ip', ip: raw.id })} style="width:100%;margin-top:8px;padding:6px 12px;background:rgba(255,109,0,0.15);border:1px solid rgba(255,109,0,0.5);color:#FF6D00;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:bold;letter-spacing:0.1em;border-radius:4px;cursor:pointer;">[ IP INTEL DEEP DIVE ]</button>
       </div>`);
     });
 
     // ── SCM Suppliers ──
     map.on('click', 'scm-dots', e => {
       if (!e.features?.length) return;
-      const p = e.features[0].properties as any;
+      const raw = e.features[0].properties as any;
+      const p = safeProps(raw);
       const coords = (e.features[0].geometry as any).coordinates;
       const color = p.risk_level === 'CRITICAL' ? '#FF1744' : p.risk_level === 'HIGH' ? '#FF9500' : '#00BCD4';
       const activeThreats = p.active_threats ? JSON.parse(p.active_threats) : [];
@@ -860,7 +906,8 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
 
     // ── IP Sweep device click ──
     map.on('click', 'sweep-device-dots', (e: any) => {
-      const p = e.features?.[0]?.properties;
+      const raw = e.features?.[0]?.properties;
+      const p = raw ? safeProps(raw) : null;
       if (!p) return;
       const coords = e.features[0].geometry.coordinates.slice();
       const ports = JSON.parse(p.ports || '[]');
@@ -877,14 +924,15 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
         </div>
         <div style="font-size:9px;color:#8A8880;margin-bottom:6px;">Open: ${ports.slice(0, 12).join(', ')}${ports.length > 12 ? ' ...' : ''}</div>
         ${vulns.length > 0 ? `<div style="font-size:9px;color:#FF3D3D;margin-bottom:6px;">⚠ CVEs: ${vulns.slice(0, 5).join(', ')}${vulns.length > 5 ? ` +${vulns.length - 5} more` : ''}</div>` : ''}
-        <button onclick="window.openBeaconIntel({ type: 'ip', ip: '${p.ip}' })" style="width:100%;margin-top:6px;padding:6px 12px;background:rgba(255,109,0,0.15);border:1px solid rgba(255,109,0,0.5);color:#FF6D00;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:bold;letter-spacing:0.1em;border-radius:4px;cursor:pointer;">[ IP INTEL DEEP DIVE ]</button>
+        <button ${intelAttr({ type: 'ip', ip: raw.ip })} style="width:100%;margin-top:6px;padding:6px 12px;background:rgba(255,109,0,0.15);border:1px solid rgba(255,109,0,0.5);color:#FF6D00;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:bold;letter-spacing:0.1em;border-radius:4px;cursor:pointer;">[ IP INTEL DEEP DIVE ]</button>
       </div>`);
     });
 
     // ── Balloons / Sondes ──
     map.on('click', 'balloon-dots', e => {
       if (!e.features?.length) return;
-      const p = e.features[0].properties as any;
+      const raw = e.features[0].properties as any;
+      const p = safeProps(raw);
       const coords = (e.features[0].geometry as any).coordinates;
       popup(coords, `<div style="${pStyle}border:1px solid ${p.color}40;">
         <div style="color:${p.color};font-size:12px;font-weight:700;letter-spacing:0.1em;margin-bottom:4px;">🎈 ${p.callsign}</div>
@@ -901,7 +949,8 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
     // ── Radiation ──
     map.on('click', 'rad-dots', e => {
       if (!e.features?.length) return;
-      const p = e.features[0].properties as any;
+      const raw = e.features[0].properties as any;
+      const p = safeProps(raw);
       const coords = (e.features[0].geometry as any).coordinates;
       const color = p.status === 'DANGER' ? '#FF1744' : p.status === 'WARNING' ? '#FF9500' : '#AB47BC';
       popup(coords, `<div style="${pStyle}border:1px solid ${color}40;">
@@ -918,7 +967,8 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
     // ── Maritime Ships ──
     map.on('click', 'ship-dots', e => {
       if (!e.features?.length) return;
-      const p = e.features[0].properties as any;
+      const raw = e.features[0].properties as any;
+      const p = safeProps(raw);
       const coords = (e.features[0].geometry as any).coordinates;
       const color = p.type === 'military' ? '#FF1744' : p.type === 'tanker' ? '#FF9500' : '#00E5FF';
       const icon = p.type === 'military' ? '⚔️' : p.type === 'tanker' ? '🛢️' : '🚢';
@@ -943,7 +993,8 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
     // ── Weather Events (NASA EONET) ──
     map.on('click', 'weather-dots', e => {
       if (!e.features?.length) return;
-      const p = e.features[0].properties as any;
+      const raw = e.features[0].properties as any;
+      const p = safeProps(raw);
       const coords = (e.features[0].geometry as any).coordinates;
       const iconEmoji = p.icon === 'cyclone' ? '🌀' : p.icon === 'volcano' ? '🌋' : '⚡';
       popup(coords, `<div style="${pStyle}border:1px solid rgba(224,64,251,0.3);">
@@ -963,7 +1014,8 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
     // ── Nuclear Infrastructure ──
     map.on('click', 'infra-dots', e => {
       if (!e.features?.length) return;
-      const p = e.features[0].properties as any;
+      const raw = e.features[0].properties as any;
+      const p = safeProps(raw);
       const coords = (e.features[0].geometry as any).coordinates;
       const statusColor = p.status.includes('SEISMIC RISK') ? '#FF9500' : p.status === 'Active Conflict Zone' ? '#FF1744' : p.status === 'Operational' ? '#76FF03' : '#757575';
       popup(coords, `<div style="${pStyle}border:1px solid rgba(118,255,3,0.3);">
@@ -982,7 +1034,8 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
 
     // ── Maritime Ports & Naval Bases ──
     map.on('click', 'maritime-dots', e => {
-      const p = e.features?.[0]?.properties;
+      const raw = e.features?.[0]?.properties;
+      const p = raw ? safeProps(raw) : null;
       if (!p) return;
       const coords = (e.features![0].geometry as any).coordinates;
       const typeColor = p.type === 'naval' ? '#FF3D3D' : p.type === 'energy' ? '#FF9500' : '#00BCD4';
@@ -1008,7 +1061,8 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
 
     // ── Maritime Chokepoints ──
     map.on('click', 'choke-dots', e => {
-      const p = e.features?.[0]?.properties;
+      const raw = e.features?.[0]?.properties;
+      const p = raw ? safeProps(raw) : null;
       if (!p) return;
       const coords = (e.features![0].geometry as any).coordinates;
       const riskCol = p.risk === 'CRITICAL' ? '#FF1744' : p.risk === 'HIGH' ? '#FF9500' : p.risk === 'ELEVATED' ? '#FFD700' : '#00E676';
