@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plane, Satellite, Activity, Sun, AlertTriangle, Camera, Flame, Target,
   CloudLightning, Radiation, Tv, Anchor, Ship, Newspaper,
-  Network, Share2, Radio
+  Network, Share2, Radio, BookOpen
 } from 'lucide-react';
 import FeedViewHotkeys from './FeedViewHotkeys';
 
@@ -73,6 +73,7 @@ const LAYER_GROUPS = [
     layers: [
       { key: 'infrastructure', label: 'Nuclear Facilities', icon: Radiation, color: '#26A69A', dataKey: 'infrastructure' },
       { key: 'global_incidents', label: 'Global Incidents', icon: AlertTriangle, color: '#D32F2F', dataKey: 'gdelt' },
+      { key: 'wiki_surges', label: 'Wikipedia Edit Surges', icon: BookOpen, color: '#ECEFF1', dataKey: 'wiki_surges' },
       { key: 'gps_jamming', label: 'GPS Jamming', icon: Radio, color: '#D32F2F', dataKey: 'gps_jamming' },
     ],
   },

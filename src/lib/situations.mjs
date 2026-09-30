@@ -34,6 +34,7 @@ const DASHBOARD_FEEDS = [
   { key: 'port_disruptions', source: 'PortWatch', type: 'maritime',
     sev: (e) => (e.active ? 'high' : 'elevated') },
   { key: 'gdelt', source: 'GDELT', type: 'geopolitical', sev: () => 'elevated' },
+  { key: 'wiki_surges', source: 'Wikipedia surge', type: 'signal', sev: (e) => (e.severity === 'high' ? 'high' : 'elevated') },
   { key: 'fires', source: 'FIRMS Fires', type: 'fire', sev: () => 'elevated' },
   { key: 'weather_events', source: 'Weather', type: 'weather', sev: () => 'elevated' },
 ];

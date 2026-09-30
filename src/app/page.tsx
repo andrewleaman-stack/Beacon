@@ -161,6 +161,7 @@ export default function Dashboard() {
     conflict_events: false,
     infrastructure: false,
     global_incidents: true,
+    wiki_surges: false,
     war_alerts: false,
     gps_jamming: false,
     day_night: true,
@@ -437,6 +438,13 @@ export default function Dashboard() {
   }, [fetchEndpoint]);
 
   // ── LAYER-AWARE DATA LOADING — only fetch when layer is toggled ON ──
+  // Edit surges change minute to minute; poll while the layer is on.
+  useEffect(() => {
+    if (!activeLayers.wiki_surges) return;
+    const iv = setInterval(() => fetchEndpoint('/api/wiki-surges', d => ({ wiki_surges: d.surges })), 2 * 60_000);
+    return () => clearInterval(iv);
+  }, [activeLayers.wiki_surges, fetchEndpoint]);
+
   const layerFetchedRef = useRef<Set<string>>(new Set());
   useEffect(() => {
 
@@ -504,6 +512,11 @@ export default function Dashboard() {
     if (activeLayers.global_incidents && !layerFetchedRef.current.has('gdelt')) {
       fetchEndpoint('/api/gdelt', d => ({ gdelt: d.events }));
       layerFetchedRef.current.add('gdelt');
+    }
+    // Wikipedia edit surges (refreshed by the effect below)
+    if (activeLayers.wiki_surges && !layerFetchedRef.current.has('wiki_surges')) {
+      fetchEndpoint('/api/wiki-surges', d => ({ wiki_surges: d.surges }));
+      layerFetchedRef.current.add('wiki_surges');
     }
 
     // Submarine Cables

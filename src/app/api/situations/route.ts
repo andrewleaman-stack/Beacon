@@ -35,6 +35,8 @@ const FEED_SOURCES: FeedSource[] = [
   { path: '/api/fires', key: 'fires', source: 'FIRMS Fires', type: 'fire', sev: () => 'elevated' },
   { path: '/api/fema-disasters', key: 'disasters', source: 'FEMA', type: 'hazard', timeoutMs: 8000, sev: () => 'elevated' },
   { path: '/api/gdelt', key: 'events', source: 'GDELT', type: 'geopolitical', timeoutMs: 12000, sev: () => 'elevated' },
+  { path: '/api/wiki-surges', key: 'surges', source: 'Wikipedia surge', type: 'signal', timeoutMs: 10000,
+    sev: (e) => (e.severity === 'high' ? 'high' : 'elevated') },
 ];
 
 const num = (v: any): number | null => {
