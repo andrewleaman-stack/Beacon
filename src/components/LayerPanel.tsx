@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plane, Satellite, Activity, Sun, AlertTriangle, Camera, Flame, Target,
   CloudLightning, Cloud, CloudRain, Zap, Wind, Trees, Radiation, Tv, Anchor, Ship, Newspaper,
-  Network, Share2, Radio, BookOpen
+  Network, Share2, Radio, BookOpen, Rocket
 } from 'lucide-react';
 import FeedViewHotkeys from './FeedViewHotkeys';
 
@@ -45,6 +45,7 @@ const LAYER_GROUPS = [
     layers: [
       { key: 'maritime', label: 'Maritime / Naval', icon: Ship, color: '#26C6DA', dataKey: 'maritime_ships,maritime_ports,maritime_chokepoints' },
       { key: 'satellites', label: 'Satellites', icon: Satellite, color: '#D4AF37', dataKey: 'satellites' },
+      { key: 'launches', label: 'Space Launches (±2 wk)', icon: Rocket, color: '#FF7043', dataKey: 'launch_pads' },
     ],
   },
   {

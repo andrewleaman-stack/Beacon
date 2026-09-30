@@ -58,7 +58,7 @@ jobs:
       - name: Remaining feed unit tests
         run: |
           for t in live-feeds credentialed-feeds hazard-feeds view-hotkeys dashboard-settings \
-                   infra-advisory-feeds usgs-gauges fema-disasters tsunami expanded-feeds transport-cable-feeds gdelt-events wiki-surge region-context nasa-imagery weather-layers; do
+                   infra-advisory-feeds usgs-gauges fema-disasters tsunami expanded-feeds transport-cable-feeds gdelt-events wiki-surge region-context nasa-imagery weather-layers launches geo-nearby; do
             echo "::group::test:$t"; npm run "test:$t"; echo "::endgroup::"
           done
 
