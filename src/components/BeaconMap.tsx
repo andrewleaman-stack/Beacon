@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useCallback, memo } from 'react';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { trueColorTiles, liveCloudTiles, LIVE_CLOUD_LAYERS, GIBS_ATTRIBUTION } from '@/lib/nasa-imagery.mjs';
+import { lightningTiles, FOREST_ALERT_TILES } from '@/lib/weather-layers.mjs';
 
 interface BeaconMapProps {
   data: any;
@@ -1614,6 +1615,114 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
     const iv = setInterval(apply, 10 * 60_000);
     return () => clearInterval(iv);
   }, [mapReady, activeLayers.imagery_truecolor, activeLayers.imagery_live]);
+
+  // Weather & environment rasters: radar, lightning density, forest-loss alerts
+  useEffect(() => {
+    if (!mapReady || !mapRef.current) return;
+    const map = mapRef.current;
+    const beforeId = map.getLayer('day-night-fill') ? 'day-night-fill' : undefined;
+    let cancelled = false;
+
+    const setRaster = (id: string, visible: boolean, tiles: string[] | null, opts: { maxzoom: number; opacity: number; attribution: string }) => {
+      const layerId = `${id}-layer`;
+      if (visible && tiles?.length) {
+        const source = map.getSource(id) as any;
+        if (!source) {
+          map.addSource(id, { type: 'raster', tiles, tileSize: 256, maxzoom: opts.maxzoom, attribution: opts.attribution });
+          map.addLayer({ id: layerId, type: 'raster', source: id, paint: { 'raster-opacity': opts.opacity } }, beforeId);
+        } else if (typeof source.setTiles === 'function') {
+          source.setTiles(tiles);
+        }
+      }
+      if (map.getLayer(layerId)) map.setLayoutProperty(layerId, 'visibility', visible ? 'visible' : 'none');
+    };
+
+    const apply = async () => {
+      try {
+        let radarTiles: string[] | null = null;
+        if (activeLayers.weather_radar) {
+          const res = await fetch('/api/weather-radar');
+          if (res.ok) radarTiles = (await res.json()).tiles;
+        }
+        if (cancelled) return;
+        setRaster('rainviewer', !!activeLayers.weather_radar, radarTiles, { maxzoom: 7, opacity: 0.7, attribution: 'Radar: RainViewer' });
+        setRaster('nowcoast-lightning', !!activeLayers.lightning, lightningTiles(), { maxzoom: 10, opacity: 0.9, attribution: 'Lightning: NOAA nowCOAST (NLDN/GLD360)' });
+        setRaster('gfw-glad', !!activeLayers.forest_alerts, FOREST_ALERT_TILES, { maxzoom: 12, opacity: 0.85, attribution: 'Forest alerts: UMD GLAD / Global Forest Watch' });
+      } catch (e) {
+        console.warn('[BEACON] Weather overlay failed:', e);
+      }
+    };
+    apply();
+    if (!activeLayers.weather_radar && !activeLayers.lightning) return () => { cancelled = true; };
+    const iv = setInterval(apply, 10 * 60_000);
+    return () => { cancelled = true; clearInterval(iv); };
+  }, [mapReady, activeLayers.weather_radar, activeLayers.lightning, activeLayers.forest_alerts]);
+
+  // Surface wind arrows (Open-Meteo 10° grid)
+  useEffect(() => {
+    if (!mapReady || !mapRef.current) return;
+    const map = mapRef.current;
+    let cancelled = false;
+
+    if (!map.hasImage('wind-arrow')) {
+      const size = 32;
+      const canvas = document.createElement('canvas');
+      canvas.width = size; canvas.height = size;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        ctx.moveTo(16, 2); ctx.lineTo(25, 14); ctx.lineTo(19, 14); ctx.lineTo(19, 30);
+        ctx.lineTo(13, 30); ctx.lineTo(13, 14); ctx.lineTo(7, 14); ctx.closePath();
+        ctx.fill();
+        const img = ctx.getImageData(0, 0, size, size);
+        map.addImage('wind-arrow', { width: size, height: size, data: new Uint8Array(img.data.buffer) }, { sdf: true });
+      }
+    }
+    if (!map.getSource('wind-grid')) {
+      map.addSource('wind-grid', { type: 'geojson', data: EMPTY_FC as any, attribution: 'Wind: Open-Meteo.com' });
+      map.addLayer({
+        id: 'wind-arrows', type: 'symbol', source: 'wind-grid',
+        layout: {
+          'icon-image': 'wind-arrow',
+          'icon-size': ['interpolate', ['linear'], ['get', 'speed'], 0, 0.35, 40, 0.8],
+          // Wind direction is where it blows FROM; point the arrow downwind.
+          'icon-rotate': ['+', ['get', 'dir'], 180],
+          'icon-rotation-alignment': 'map',
+          'icon-allow-overlap': true,
+          visibility: 'none',
+        },
+        paint: {
+          'icon-color': ['interpolate', ['linear'], ['get', 'speed'], 0, '#90CAF9', 15, '#FFF176', 30, '#FFB74D', 50, '#E57373'],
+          'icon-opacity': 0.85,
+        },
+      });
+    }
+    map.setLayoutProperty('wind-arrows', 'visibility', activeLayers.wind ? 'visible' : 'none');
+    if (!activeLayers.wind) return;
+
+    const load = async () => {
+      try {
+        const res = await fetch('/api/wind-grid');
+        if (!res.ok || cancelled) return;
+        const { points } = await res.json();
+        const src = map.getSource('wind-grid') as any;
+        src?.setData({
+          type: 'FeatureCollection',
+          features: (points || []).map((p: any) => ({
+            type: 'Feature',
+            geometry: { type: 'Point', coordinates: [p.lng, p.lat] },
+            properties: { speed: p.speedKn, dir: p.directionFrom },
+          })),
+        });
+      } catch (e) {
+        console.warn('[BEACON] Wind grid failed:', e);
+      }
+    };
+    load();
+    const iv = setInterval(load, 30 * 60_000);
+    return () => { cancelled = true; clearInterval(iv); };
+  }, [mapReady, activeLayers.wind]);
 
   return <div ref={containerRef} className="absolute inset-0 w-full h-full" />;
 }

@@ -28,6 +28,7 @@
     "test:wiki-surge": "node --test scripts/wiki-surge.test.mjs",
     "test:region-context": "node --test scripts/region-context.test.mjs",
     "test:nasa-imagery": "node --test scripts/nasa-imagery.test.mjs",
+    "test:weather-layers": "node --test scripts/weather-layers.test.mjs",
     "typecheck": "tsc --noEmit",
     "smoke": "node scripts/smoke.mjs",
     "db:push": "prisma db push",
