@@ -25,6 +25,7 @@
     "test:expanded-feeds": "node --test scripts/expanded-feeds.test.mjs",
     "test:transport-cable-feeds": "node --test scripts/transport-cable-feeds.test.mjs",
     "test:gdelt-events": "node --test scripts/gdelt-events.test.mjs",
+    "test:wiki-surge": "node --test scripts/wiki-surge.test.mjs",
     "typecheck": "tsc --noEmit",
     "smoke": "node scripts/smoke.mjs",
     "db:push": "prisma db push",

@@ -198,7 +198,7 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
       createDot(map, 'dot-fire', '#E65100', 10);
       createDot(map, 'dot-cctv', '#7E57C2', 10);
 
-      const sources = ['flights','military','jets','private-fl','satellites','earthquakes','gdelt','gps-jamming','day-night','cctv','fires','weather','infrastructure','maritime','maritime-choke','maritime-ships','live-news','sigint-news','conflict-zones', 'war-alerts-targets', 'war-alerts-lines', 'balloons', 'radiation', 'port-disruptions', 'conflict-events', 'ip-sweep-devices', 'ip-sweep-pulse', 'ip-sweep-connections', 'scan-targets', 'sdk-entities', 'sdk-links', 'malware-nodes', 'network-mesh'];
+      const sources = ['flights','military','jets','private-fl','satellites','earthquakes','gdelt','gps-jamming','day-night','cctv','fires','weather','infrastructure','maritime','maritime-choke','maritime-ships','live-news','sigint-news','conflict-zones', 'war-alerts-targets', 'war-alerts-lines', 'balloons', 'radiation', 'port-disruptions', 'conflict-events', 'ip-sweep-devices', 'ip-sweep-pulse', 'ip-sweep-connections', 'scan-targets', 'sdk-entities', 'sdk-links', 'malware-nodes', 'network-mesh', 'wiki-surges'];
       sources.forEach(s => map.addSource(s, { type: 'geojson', data: EMPTY_FC }));
 
       // Warning icon generator (parameterized — eliminates 3x copy-paste)
@@ -317,6 +317,12 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
 
       map.addLayer({ id: 'gdelt-dots', type: 'circle', source: 'gdelt', paint: {
         'circle-radius': 4, 'circle-color': '#D32F2F', 'circle-opacity': 0.5, 'circle-stroke-width': 1, 'circle-stroke-color': '#D32F2F', 'circle-stroke-opacity': 0.25,
+      }});
+
+      // Wikipedia edit surges — white ring, larger for bigger rushes
+      map.addLayer({ id: 'wiki-surge-dots', type: 'circle', source: 'wiki-surges', paint: {
+        'circle-radius': ['interpolate', ['linear'], ['get', 'editors'], 4, 5, 20, 11],
+        'circle-color': '#ECEFF1', 'circle-opacity': 0.25, 'circle-stroke-width': 2, 'circle-stroke-color': '#ECEFF1', 'circle-stroke-opacity': 0.9,
       }});
 
       // GPS Jamming — crimson
@@ -774,6 +780,24 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
     });
 
 
+    // ── Wikipedia edit surges ──
+    map.on('click', 'wiki-surge-dots', e => {
+      if (!e.features?.length) return;
+      const raw = e.features[0].properties as any;
+      const p = safeProps(raw);
+      const coords = (e.features[0].geometry as any).coordinates;
+      popup(coords, `<div style="${pStyle}border:1px solid rgba(236,239,241,0.35);">
+        <div style="color:#ECEFF1;font-size:12px;font-weight:700;margin-bottom:6px;">📝 ${p.title}</div>
+        ${p.description ? `<div style="font-size:9px;color:#aaa;margin-bottom:6px;">${p.description}</div>` : ''}
+        <div style="font-size:10px;color:#E8E6E0;margin-bottom:6px;">${p.edits} edits by ${p.editors} editors in ${p.windowMinutes} min · ${p.wiki}</div>
+        <div style="font-size:9px;color:#8A8880;margin-bottom:6px;">An edit rush is a lead to check, not confirmation of an event.</div>
+        <div style="display:flex;gap:6px;">
+          <a href="${p.url}" target="_blank" rel="noopener" style="${linkStyle}flex:1;text-align:center;color:#ECEFF1;border:1px solid rgba(236,239,241,0.4);">ARTICLE ↗</a>
+          <a href="${p.historyUrl}" target="_blank" rel="noopener" style="${linkStyle}flex:1;text-align:center;color:#ECEFF1;border:1px solid rgba(236,239,241,0.4);">EDIT HISTORY ↗</a>
+        </div>
+      </div>`);
+    });
+
     // ── GDELT Conflicts (with source article) ──
     map.on('click', 'gdelt-dots', e => {
       if (!e.features?.length) return;
@@ -856,7 +880,7 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
     });
 
     // ── Generic hover for clickables ──
-    ['conflict-icons','cctv-dots','eq-circles','sat-dots','fires-heat','gdelt-dots','weather-dots','infra-dots','maritime-dots','choke-dots','news-dots','sigint-news-dots','balloon-dots','rad-dots','ship-dots','sweep-device-dots','scan-targets-dots','sdk-sea','sdk-sea-glow','sdk-sea-atmo','sdk-air','sdk-air-glow','sdk-air-atmo','sdk-intel','sdk-intel-glow','sdk-intel-atmo','malware-dots'].forEach(layer => {
+    ['conflict-icons','cctv-dots','eq-circles','sat-dots','fires-heat','gdelt-dots','weather-dots','infra-dots','maritime-dots','choke-dots','news-dots','sigint-news-dots','balloon-dots','rad-dots','ship-dots','sweep-device-dots','scan-targets-dots','sdk-sea','sdk-sea-glow','sdk-sea-atmo','sdk-air','sdk-air-glow','sdk-air-atmo','sdk-intel','sdk-intel-glow','sdk-intel-atmo','malware-dots','wiki-surge-dots'].forEach(layer => {
       map.on('mouseenter', layer, () => { map.getCanvas().style.cursor = 'pointer'; });
       map.on('mouseleave', layer, () => { map.getCanvas().style.cursor = ''; });
     });
@@ -1154,6 +1178,16 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
     setGeo('gdelt', activeLayers.global_incidents && data.gdelt ? data.gdelt.map((e: any) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [e.lng, e.lat] }, properties: { name: e.name } })) : []);
   }, [mapReady, data.gdelt, activeLayers.global_incidents, setGeo]);
 
+  useEffect(() => {
+    if (!mapReady) return;
+    const surges = activeLayers.wiki_surges && Array.isArray(data.wiki_surges) ? data.wiki_surges : [];
+    setGeo('wiki-surges', surges.filter((w: any) => w.lat != null && w.lng != null).map((w: any) => ({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [w.lng, w.lat] },
+      properties: { title: w.title, description: w.description, edits: w.edits, editors: w.editors, windowMinutes: w.windowMinutes, wiki: w.wiki, url: w.url, historyUrl: w.historyUrl },
+    })));
+  }, [mapReady, data.wiki_surges, activeLayers.wiki_surges, setGeo]);
+
   // Malware Threats
   useEffect(() => {
     if (!mapReady) return;
@@ -1328,6 +1362,7 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
     setVis(['eq-circles','eq-label'], activeLayers.earthquakes);
     setVis(['sat-dots'], activeLayers.satellites);
     setVis(['gdelt-dots'], activeLayers.global_incidents);
+    setVis(['wiki-surge-dots'], activeLayers.wiki_surges);
 
     setVis(['malware-glow','malware-dots','malware-label'], activeLayers.malware);
     setVis(['network-mesh-atmo', 'network-mesh-glow', 'network-mesh-core'], activeLayers.internet_outages || activeLayers.malware);
