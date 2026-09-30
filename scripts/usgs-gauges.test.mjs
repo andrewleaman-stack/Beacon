@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import {
   parseRdbStations,
   normalizeUsgsRealtime,
+  groupReadingsBySite,
 } from '../src/lib/usgs-stream-gauges.mjs';
 
 test('parseRdbStations parses RDB format and filters by state', () => {
@@ -96,4 +97,33 @@ test('normalizeUsgsRealtime maps WaterServices time series to BEACON readings', 
   assert.equal(reading.lng, -83.6833);
   assert.equal(reading.source, 'USGS Realtime (IV)');
   assert.ok(reading.sourceUrl.includes('04166000'));
+});
+
+test('normalizeUsgsRealtime reads the top-level WaterServices time-series shape', () => {
+  const series = {
+    sourceInfo: {
+      siteName: 'HURON RIVER AT MILAN, MI',
+      siteCode: [{ value: '04166000' }],
+      geoLocation: { geogLocation: { latitude: 42.1333, longitude: -83.6833 } },
+    },
+    variable: { variableCode: [{ value: '00065' }], variableName: 'Gage height, ft', unit: { unitCode: 'ft' } },
+    values: [{ value: [{ value: '4.21', dateTime: '2026-09-30T18:00:00.000-04:00' }] }],
+  };
+  const r = normalizeUsgsRealtime(series);
+  assert.equal(r.siteId, '04166000');
+  assert.equal(r.siteName, 'HURON RIVER AT MILAN, MI');
+  assert.equal(r.value, 4.21);
+});
+
+test('groupReadingsBySite builds one gauge per site with height and flow, flood stage unknown', () => {
+  const base = { siteId: '04166000', siteName: 'HURON RIVER AT MILAN, MI', lat: 42.13, lng: -83.68, sourceUrl: 'https://waterdata.usgs.gov/monitoring-location/04166000' };
+  const gauges = groupReadingsBySite([
+    { ...base, parameterCode: '00060', value: 310, time: '2026-09-30T22:00:00Z' },
+    { ...base, parameterCode: '00065', value: 4.2, time: '2026-09-30T22:15:00Z' },
+  ], 'MI');
+  assert.equal(gauges.length, 1);
+  assert.equal(gauges[0].dischargeCfs, 310);
+  assert.equal(gauges[0].gageHeightFt, 4.2);
+  assert.equal(gauges[0].latestReading.parameterCode, '00065');
+  assert.equal(gauges[0].floodStage, null);
 });

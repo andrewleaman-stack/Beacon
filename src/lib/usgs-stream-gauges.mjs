@@ -106,43 +106,74 @@ export async function fetchUsgsRealtime({ siteIds, parameterCodes = ['00060', '0
 }
 
 /**
- * Flood mode: get stations for state, then realtime readings
+ * Latest discharge and gage-height readings for every active stream gauge in a
+ * state, from one nwis/iv request. (Previously this listed 500 arbitrary sites
+ * first and passed them all as a `sites=` list, which USGS rejected with 503.)
  * @param {{ state?: string; limit?: number; fetchImpl?: typeof fetch }} options
  * @returns {Promise<any[]>}
  */
-export async function fetchUsgsFloodGauges({ state, limit = 200, fetchImpl = fetch } = {}) {
-  const stations = await fetchUsgsStations({ state, limit, fetchImpl });
-  if (!stations.length) return [];
+export async function fetchUsgsFloodGauges({ state = 'MI', limit = 200, fetchImpl = fetch } = {}) {
+  const params = new URLSearchParams({
+    format: 'json',
+    stateCd: state,
+    siteType: 'ST',
+    parameterCd: '00060,00065',
+    siteStatus: 'active',
+  });
+  const response = await fetchImpl(`${USGS_WATER_SERVICES}/iv/?${params.toString()}`, {
+    cache: 'no-store',
+    headers: { 'User-Agent': 'BEACON/1.0 (+https://github.com/andrewleaman-stack/Beacon) usgs-realtime' },
+    signal: AbortSignal.timeout(20_000),
+  });
+  if (!response.ok) throw new Error(`USGS realtime returned HTTP ${response.status}`);
+  const data = await response.json();
+  return groupReadingsBySite((data?.value?.timeSeries || []).map(normalizeUsgsRealtime).filter(Boolean), state).slice(0, limit);
+}
 
-  const streamStations = stations.filter(s =>
-    s.siteType?.includes('ST') || s.siteType?.includes('stream') || s.siteType?.includes('river')
-  ).slice(0, 200);
-
-  const siteIds = streamStations.map(s => s.siteId);
-  const realtime = await fetchUsgsRealtime({ siteIds, parameterCodes: ['00060', '00065', '00062'], fetchImpl });
-
+/** Collapse per-parameter readings into one gauge per site, newest reading first. */
+export function groupReadingsBySite(readings, state = '') {
   const bySite = new Map();
-  for (const rt of realtime) {
-    const existing = bySite.get(rt.siteId) || { station: streamStations.find(s => s.siteId === rt.siteId), readings: [] };
-    existing.readings.push(rt);
-    bySite.set(rt.siteId, existing);
+  for (const rt of readings) {
+    const gauge = bySite.get(rt.siteId) || {
+      id: `usgs-gauge-${rt.siteId}`,
+      name: rt.siteName || 'USGS Gauge',
+      siteId: rt.siteId,
+      lat: rt.lat,
+      lng: rt.lng,
+      state,
+      siteType: 'ST',
+      agency: 'USGS',
+      source: 'USGS Water Services (nwis/iv)',
+      sourceUrl: rt.sourceUrl,
+      readings: [],
+    };
+    gauge.readings.push(rt);
+    bySite.set(rt.siteId, gauge);
   }
-
-  return Array.from(bySite.values())
-    .map(({ station, readings }) => ({
-      ...station,
-      readings: readings.sort((a, b) => new Date(b.time || 0) - new Date(a.time || 0)),
-      latestReading: readings[0] || null,
-      floodStage: readings.some(r => r.parameterCode === '00065' && r.value != null && r.value > (r.floodStage || 10)),
-    }))
-    .filter(g => g.lat != null && g.lng != null);
+  return [...bySite.values()].map((gauge) => {
+    gauge.readings.sort((x, y) => new Date(y.time || 0) - new Date(x.time || 0));
+    const height = gauge.readings.find((r) => r.parameterCode === '00065');
+    const flow = gauge.readings.find((r) => r.parameterCode === '00060');
+    return {
+      ...gauge,
+      latestReading: gauge.readings[0] || null,
+      gageHeightFt: height?.value ?? null,
+      dischargeCfs: flow?.value ?? null,
+      // NWIS does not publish flood stages (NOAA NWPS does), so this stays unknown
+      // rather than guessing from a fixed height.
+      floodStage: null,
+      fetchedAt: new Date().toISOString(),
+    };
+  });
 }
 
 /**
  * Normalize WaterServices realtime time series to BEACON reading
  */
 export function normalizeUsgsRealtime(feature) {
-  const props = feature?.properties || {};
+  // WaterServices JSON puts sourceInfo/variable/values at the top level of each
+  // time series; accept a `properties` wrapper too for GeoJSON-style callers.
+  const props = feature?.properties || feature || {};
   const sourceInfo = props.sourceInfo || {};
   const site = sourceInfo.siteCode?.[0]?.value || sourceInfo.siteName || '';
   const lat = number(sourceInfo.geoLocation?.geogLocation?.latitude);
@@ -163,6 +194,7 @@ export function normalizeUsgsRealtime(feature) {
   return {
     id: `usgs-rt-${site}-${paramCode}`,
     siteId: site,
+    siteName: clean(sourceInfo.siteName),
     parameterCode: paramCode,
     parameterName: clean(variable.variableName || variable.variableDescription),
     value: latestValue,

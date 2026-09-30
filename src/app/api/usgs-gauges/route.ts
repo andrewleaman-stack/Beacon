@@ -22,8 +22,7 @@ export async function GET(request: Request) {
     } else {
       gauges = await fetchUsgsFloodGauges({ state, limit } as { state?: string; limit: number });
       sourceStatus = [
-        { source: 'USGS OGC Stations', ok: gauges.length > 0, count: gauges.length, error: gauges.length === 0 ? 'No stations found' : null },
-        { source: 'USGS Realtime IV', ok: gauges.some(g => g.latestReading), count: gauges.filter(g => g.latestReading).length, error: null },
+        { source: 'USGS Realtime IV', ok: gauges.length > 0, count: gauges.length, error: gauges.length === 0 ? 'No active stream gauges reported' : null },
       ];
     }
 
@@ -31,13 +30,13 @@ export async function GET(request: Request) {
       gauges,
       total: gauges.length,
       mode,
-      sources: ['USGS OGC API', 'USGS WaterServices IV'],
+      sources: ['USGS WaterServices'],
       sourceStatus,
       timestamp,
       status: gauges.length > 0 ? 'live' : 'degraded',
       notice: mode === 'flood'
-        ? 'Active stream gauges with latest discharge/gage height readings. Flood stage detection included.'
-        : 'USGS monitoring station locations from OGC API. Use mode=flood for realtime readings.',
+        ? 'Active stream gauges with latest discharge and gage height. Flood stage is not published by USGS and is left blank.'
+        : 'USGS monitoring station locations. Use mode=flood for realtime readings.',
     }, {
       headers: {
         'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=900',
