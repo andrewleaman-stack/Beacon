@@ -5,6 +5,10 @@ export const dynamic = 'force-dynamic';
 
 const USGS_GAUGE_LIMIT = Number(process.env.USGS_GAUGE_LIMIT || 500);
 
+// Last good result per state/mode, served (marked stale) for up to 6 h if USGS fails.
+const lastGood = new Map<string, { gauges: any[]; at: number }>();
+const STALE_LIMIT_MS = 6 * 60 * 60_000;
+
 export async function GET(request: Request) {
   const timestamp = new Date().toISOString();
   const { searchParams } = new URL(request.url);
@@ -22,10 +26,11 @@ export async function GET(request: Request) {
     } else {
       gauges = await fetchUsgsFloodGauges({ state, limit } as { state?: string; limit: number });
       sourceStatus = [
-        { source: 'USGS Realtime IV', ok: gauges.length > 0, count: gauges.length, error: gauges.length === 0 ? 'No active stream gauges reported' : null },
+        { source: gauges[0]?.source || 'USGS', ok: gauges.length > 0, count: gauges.length, error: gauges.length === 0 ? 'No active stream gauges reported' : null },
       ];
     }
 
+    lastGood.set(`${state}:${mode}`, { gauges, at: Date.now() });
     return NextResponse.json({
       gauges,
       total: gauges.length,
@@ -43,6 +48,19 @@ export async function GET(request: Request) {
       },
     });
   } catch (error: any) {
+    const cached = lastGood.get(`${state}:${mode}`);
+    if (cached && Date.now() - cached.at < STALE_LIMIT_MS) {
+      return NextResponse.json({
+        gauges: cached.gauges,
+        total: cached.gauges.length,
+        mode,
+        sources: ['USGS'],
+        timestamp,
+        fetchedAt: new Date(cached.at).toISOString(),
+        status: 'stale',
+        message: error.message,
+      });
+    }
     return NextResponse.json({
       gauges: [],
       total: 0,
