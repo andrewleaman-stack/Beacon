@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useCallback, memo } from 'react';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
+import { trueColorTiles, liveCloudTiles, LIVE_CLOUD_LAYERS, GIBS_ATTRIBUTION } from '@/lib/nasa-imagery.mjs';
 
 interface BeaconMapProps {
   data: any;
@@ -1574,6 +1575,45 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
       console.warn('Style switch failed:', e);
     }
   }, [mapReady, mapStyle]);
+
+  // NASA GIBS imagery: yesterday's global true colour, and 10-minute live clouds
+  useEffect(() => {
+    if (!mapReady || !mapRef.current) return;
+    const map = mapRef.current;
+    const beforeId = map.getLayer('day-night-fill') ? 'day-night-fill' : undefined;
+
+    const ensureRaster = (id: string, tiles: string[], maxzoom: number, opacity: number, bounds?: [number, number, number, number]) => {
+      const source = map.getSource(id) as any;
+      if (!source) {
+        map.addSource(id, { type: 'raster', tiles, tileSize: 256, maxzoom, attribution: GIBS_ATTRIBUTION, ...(bounds ? { bounds } : {}) });
+        map.addLayer({ id: `${id}-layer`, type: 'raster', source: id, paint: { 'raster-opacity': opacity } }, beforeId);
+      } else if (typeof source.setTiles === 'function') {
+        source.setTiles(tiles);
+      }
+    };
+    const show = (id: string, visible: boolean) => {
+      if (map.getLayer(`${id}-layer`)) map.setLayoutProperty(`${id}-layer`, 'visibility', visible ? 'visible' : 'none');
+    };
+
+    const apply = () => {
+      try {
+        if (activeLayers.imagery_truecolor) ensureRaster('gibs-truecolor', trueColorTiles(), 9, 0.95);
+        show('gibs-truecolor', !!activeLayers.imagery_truecolor);
+        for (const def of LIVE_CLOUD_LAYERS) {
+          const id = `gibs-${def.id}`;
+          if (activeLayers.imagery_live) ensureRaster(id, liveCloudTiles(def), def.maxzoom, 0.8, def.bounds as [number, number, number, number] | undefined);
+          show(id, !!activeLayers.imagery_live);
+        }
+      } catch (e) {
+        console.warn('[BEACON] NASA imagery layer failed:', e);
+      }
+    };
+    apply();
+    if (!activeLayers.imagery_truecolor && !activeLayers.imagery_live) return;
+    // Pick up new live frames every 10 minutes and roll the true-colour date at midnight UTC.
+    const iv = setInterval(apply, 10 * 60_000);
+    return () => clearInterval(iv);
+  }, [mapReady, activeLayers.imagery_truecolor, activeLayers.imagery_live]);
 
   return <div ref={containerRef} className="absolute inset-0 w-full h-full" />;
 }

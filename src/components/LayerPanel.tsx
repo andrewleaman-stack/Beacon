@@ -4,7 +4,7 @@ import { memo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plane, Satellite, Activity, Sun, AlertTriangle, Camera, Flame, Target,
-  CloudLightning, Radiation, Tv, Anchor, Ship, Newspaper,
+  CloudLightning, Cloud, Radiation, Tv, Anchor, Ship, Newspaper,
   Network, Share2, Radio, BookOpen
 } from 'lucide-react';
 import FeedViewHotkeys from './FeedViewHotkeys';
@@ -92,6 +92,8 @@ const LAYER_GROUPS = [
     color: '#448AFF',
     layers: [
       { key: 'day_night', label: 'Day / Night Cycle', icon: Sun, color: '#448AFF', dataKey: '' },
+      { key: 'imagery_live', label: 'Live Clouds (10 min)', icon: Cloud, color: '#90CAF9', dataKey: '' },
+      { key: 'imagery_truecolor', label: 'Satellite Photo (NASA, yesterday)', icon: Satellite, color: '#81C784', dataKey: '' },
     ],
   },
 ];

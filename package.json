@@ -26,6 +26,8 @@
     "test:transport-cable-feeds": "node --test scripts/transport-cable-feeds.test.mjs",
     "test:gdelt-events": "node --test scripts/gdelt-events.test.mjs",
     "test:wiki-surge": "node --test scripts/wiki-surge.test.mjs",
+    "test:region-context": "node --test scripts/region-context.test.mjs",
+    "test:nasa-imagery": "node --test scripts/nasa-imagery.test.mjs",
     "typecheck": "tsc --noEmit",
     "smoke": "node scripts/smoke.mjs",
     "db:push": "prisma db push",
