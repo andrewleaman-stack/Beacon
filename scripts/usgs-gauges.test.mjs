@@ -6,6 +6,7 @@ import {
   parseRdbStations,
   normalizeUsgsRealtime,
   groupReadingsBySite,
+  normalizeOgcLatest,
 } from '../src/lib/usgs-stream-gauges.mjs';
 
 test('parseRdbStations parses RDB format and filters by state', () => {
@@ -126,4 +127,17 @@ test('groupReadingsBySite builds one gauge per site with height and flow, flood 
   assert.equal(gauges[0].gageHeightFt, 4.2);
   assert.equal(gauges[0].latestReading.parameterCode, '00065');
   assert.equal(gauges[0].floodStage, null);
+});
+
+test('normalizeOgcLatest maps OGC latest-continuous features and fills names from the lookup', () => {
+  const r = normalizeOgcLatest({
+    type: 'Feature',
+    geometry: { type: 'Point', coordinates: [-84.545, 43.867] },
+    properties: { monitoring_location_id: 'USGS-04152238', monitoring_location_name: null, parameter_code: '00060', value: '48.6', unit_of_measure: 'ft^3/s', time: '2026-09-30T22:15:00+00:00' },
+  }, new Map([['USGS-04152238', 'SOUTH BRANCH TOBACCO RIVER NEAR BEAVERTON, MI']]));
+  assert.equal(r.siteId, '04152238');
+  assert.equal(r.siteName, 'SOUTH BRANCH TOBACCO RIVER NEAR BEAVERTON, MI');
+  assert.equal(r.value, 48.6);
+  assert.equal(r.lat, 43.867);
+  assert.equal(normalizeOgcLatest({ properties: {}, geometry: null }), null);
 });

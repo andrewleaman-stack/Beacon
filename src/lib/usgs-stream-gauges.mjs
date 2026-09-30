@@ -1,4 +1,18 @@
 const USGS_WATER_SERVICES = 'https://waterservices.usgs.gov/nwis';
+// Modern USGS Water Data OGC API. The legacy WaterServices (nwis/iv) is being
+// retired and often answers statewide queries with HTTP 503.
+const USGS_OGC = 'https://api.waterdata.usgs.gov/ogcapi/v0/collections';
+const UA = { 'User-Agent': 'BEACON/1.0 (+https://github.com/andrewleaman-stack/Beacon) usgs-gauges' };
+
+const STATE_NAMES = {
+  AL: 'Alabama', AK: 'Alaska', AZ: 'Arizona', AR: 'Arkansas', CA: 'California', CO: 'Colorado', CT: 'Connecticut', DE: 'Delaware',
+  DC: 'District of Columbia', FL: 'Florida', GA: 'Georgia', HI: 'Hawaii', ID: 'Idaho', IL: 'Illinois', IN: 'Indiana', IA: 'Iowa',
+  KS: 'Kansas', KY: 'Kentucky', LA: 'Louisiana', ME: 'Maine', MD: 'Maryland', MA: 'Massachusetts', MI: 'Michigan', MN: 'Minnesota',
+  MS: 'Mississippi', MO: 'Missouri', MT: 'Montana', NE: 'Nebraska', NV: 'Nevada', NH: 'New Hampshire', NJ: 'New Jersey',
+  NM: 'New Mexico', NY: 'New York', NC: 'North Carolina', ND: 'North Dakota', OH: 'Ohio', OK: 'Oklahoma', OR: 'Oregon',
+  PA: 'Pennsylvania', PR: 'Puerto Rico', RI: 'Rhode Island', SC: 'South Carolina', SD: 'South Dakota', TN: 'Tennessee', TX: 'Texas',
+  UT: 'Utah', VT: 'Vermont', VA: 'Virginia', WA: 'Washington', WV: 'West Virginia', WI: 'Wisconsin', WY: 'Wyoming',
+};
 
 function clean(value) {
   return String(value ?? '').trim();
@@ -105,6 +119,56 @@ export async function fetchUsgsRealtime({ siteIds, parameterCodes = ['00060', '0
   return series.map(normalizeUsgsRealtime).filter(Boolean);
 }
 
+/** Convert OGC latest-continuous features into the same reading shape as nwis/iv. */
+export function normalizeOgcLatest(feature, names = new Map()) {
+  const props = feature?.properties || {};
+  const coords = feature?.geometry?.coordinates;
+  const lng = number(coords?.[0]);
+  const lat = number(coords?.[1]);
+  const locationId = clean(props.monitoring_location_id);
+  const site = locationId.replace(/^USGS-/, '');
+  if (!site || lat == null || lng == null) return null;
+  return {
+    id: `usgs-rt-${site}-${clean(props.parameter_code)}`,
+    siteId: site,
+    siteName: clean(props.monitoring_location_name) || names.get(locationId) || `USGS ${site}`,
+    parameterCode: clean(props.parameter_code),
+    parameterName: props.parameter_code === '00060' ? 'Discharge' : props.parameter_code === '00065' ? 'Gage height' : clean(props.parameter_code),
+    value: number(props.value),
+    unit: clean(props.unit_of_measure),
+    time: clean(props.time) || null,
+    lat,
+    lng,
+    source: 'USGS Water Data OGC API',
+    sourceUrl: `https://waterdata.usgs.gov/monitoring-location/${site}`,
+    fetchedAt: new Date().toISOString(),
+  };
+}
+
+async function fetchOgcJson(url, fetchImpl) {
+  const response = await fetchImpl(url, { cache: 'no-store', headers: UA, signal: AbortSignal.timeout(20_000) });
+  if (!response.ok) throw new Error(`USGS OGC API returned HTTP ${response.status}`);
+  return response.json();
+}
+
+/** Latest discharge and gage height for a state's stream gauges via the OGC API. */
+export async function fetchUsgsOgcGauges({ state = 'MI', fetchImpl = fetch } = {}) {
+  const stateName = STATE_NAMES[String(state).toUpperCase()];
+  if (!stateName) throw new Error(`Unknown state code ${state}`);
+  const q = `f=json&state_name=${encodeURIComponent(stateName)}&site_type_code=ST`;
+  const [flow, height, locations] = await Promise.all([
+    fetchOgcJson(`${USGS_OGC}/latest-continuous/items?${q}&parameter_code=00060&limit=5000`, fetchImpl),
+    fetchOgcJson(`${USGS_OGC}/latest-continuous/items?${q}&parameter_code=00065&limit=5000`, fetchImpl),
+    // Names only; a failure here just leaves gauges labelled by site number.
+    fetchOgcJson(`${USGS_OGC}/monitoring-locations/items?${q}&limit=10000&skipGeometry=true&properties=monitoring_location_name`, fetchImpl).catch(() => null),
+  ]);
+  const names = new Map((locations?.features || []).map((f) => [f.id, clean(f.properties?.monitoring_location_name)]));
+  const readings = [...(flow?.features || []), ...(height?.features || [])].map((f) => normalizeOgcLatest(f, names)).filter(Boolean);
+  const gauges = groupReadingsBySite(readings, String(state).toUpperCase());
+  for (const g of gauges) g.source = 'USGS Water Data OGC API';
+  return gauges;
+}
+
 /**
  * Latest discharge and gage-height readings for every active stream gauge in a
  * state, from one nwis/iv request. (Previously this listed 500 arbitrary sites
@@ -112,7 +176,7 @@ export async function fetchUsgsRealtime({ siteIds, parameterCodes = ['00060', '0
  * @param {{ state?: string; limit?: number; fetchImpl?: typeof fetch }} options
  * @returns {Promise<any[]>}
  */
-export async function fetchUsgsFloodGauges({ state = 'MI', limit = 200, fetchImpl = fetch } = {}) {
+export async function fetchUsgsNwisGauges({ state = 'MI', limit = 200, fetchImpl = fetch } = {}) {
   const params = new URLSearchParams({
     format: 'json',
     stateCd: state,
@@ -128,6 +192,17 @@ export async function fetchUsgsFloodGauges({ state = 'MI', limit = 200, fetchImp
   if (!response.ok) throw new Error(`USGS realtime returned HTTP ${response.status}`);
   const data = await response.json();
   return groupReadingsBySite((data?.value?.timeSeries || []).map(normalizeUsgsRealtime).filter(Boolean), state).slice(0, limit);
+}
+
+/** Stream gauges for a state: OGC API first, legacy nwis/iv as fallback. */
+export async function fetchUsgsFloodGauges({ state = 'MI', limit = 200, fetchImpl = fetch } = {}) {
+  try {
+    const gauges = await fetchUsgsOgcGauges({ state, fetchImpl });
+    if (gauges.length) return gauges.slice(0, limit);
+  } catch {
+    // fall through to the legacy service
+  }
+  return fetchUsgsNwisGauges({ state, limit, fetchImpl });
 }
 
 /** Collapse per-parameter readings into one gauge per site, newest reading first. */
