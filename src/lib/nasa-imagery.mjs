@@ -26,9 +26,10 @@ export function trueColorTiles(now = new Date()) {
  * East Asia and Oceania. "default" asks GIBS for the newest available time.
  */
 export const LIVE_CLOUD_LAYERS = [
-  { id: 'goes-west', layer: 'GOES-West_ABI_GeoColor', matrix: 'GoogleMapsCompatible_Level7', maxzoom: 7 },
-  { id: 'goes-east', layer: 'GOES-East_ABI_GeoColor', matrix: 'GoogleMapsCompatible_Level7', maxzoom: 7 },
-  // Himawari's disk is centred on 140.7°E; GIBS returns HTTP 500 outside it, so bound the requests.
+  // GIBS returns HTTP 500 for tiles outside a satellite's disk, so each layer is bounded.
+  // GOES-West's disk crosses the antimeridian; its far-west part is left to Himawari.
+  { id: 'goes-west', layer: 'GOES-West_ABI_GeoColor', matrix: 'GoogleMapsCompatible_Level7', maxzoom: 7, bounds: [-180, -80, -65, 80] },
+  { id: 'goes-east', layer: 'GOES-East_ABI_GeoColor', matrix: 'GoogleMapsCompatible_Level7', maxzoom: 7, bounds: [-155, -80, 5, 80] },
   { id: 'himawari', layer: 'Himawari_AHI_Band13_Clean_Infrared', matrix: 'GoogleMapsCompatible_Level6', maxzoom: 6, bounds: [70, -80, 180, 80] },
 ];
 
