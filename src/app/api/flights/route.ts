@@ -1,6 +1,6 @@
 
 import { NextResponse } from 'next/server';
-import { stealthFetch } from '@/lib/stealthFetch';
+import { timedFetch } from '@/lib/timed-fetch';
 import { fetchOpenSkyFlights } from '@/lib/opensky.mjs';
 
 /**
@@ -58,7 +58,7 @@ const AIRLINE_CODE_RE = /^([A-Z]{3})\d/;
 async function fetchRegion(region: typeof REGIONS[0]): Promise<any[]> {
   try {
     const url = `https://api.adsb.lol/v2/lat/${region.lat}/lon/${region.lon}/dist/${region.dist}`;
-    const res = await stealthFetch(url, {
+    const res = await timedFetch(url, {
       signal: AbortSignal.timeout(12000),
     });
     if (res.ok) {

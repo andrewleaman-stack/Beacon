@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { stealthFetch } from '@/lib/stealthFetch';
+import { timedFetch } from '@/lib/timed-fetch';
 import { fetchAsfinagCameras } from './asfinag';
 import { fetchBulgariaCameras } from './bulgaria';
 import { fetchGreeceCameras } from './greece';
@@ -29,7 +29,7 @@ import { fetchJapanCameras } from './japan';
 // ── UK: Transport for London JamCams (~900) ──
 async function fetchTfLCameras(): Promise<any[]> {
   try {
-    const res = await stealthFetch('https://api.tfl.gov.uk/Place/Type/JamCam', { signal: AbortSignal.timeout(12000) });
+    const res = await timedFetch('https://api.tfl.gov.uk/Place/Type/JamCam', { signal: AbortSignal.timeout(12000) });
     if (!res.ok) return [];
     const data = await res.json();
     return (data || []).map((cam: any) => {
@@ -48,7 +48,7 @@ async function fetchTfLCameras(): Promise<any[]> {
 // ── US-WEST: WSDOT Washington State (~500) ──
 async function fetchWSDOTCameras(): Promise<any[]> {
   try {
-    const res = await stealthFetch('https://data.wsdot.wa.gov/log/public/cameras.json', { signal: AbortSignal.timeout(10000) });
+    const res = await timedFetch('https://data.wsdot.wa.gov/log/public/cameras.json', { signal: AbortSignal.timeout(10000) });
     if (!res.ok) return [];
     const data = await res.json();
     return (data || []).map((cam: any) => ({
@@ -64,7 +64,7 @@ async function fetchCaltransCameras(): Promise<any[]> {
   const allCams: any[] = [];
   for (const dist of ['d03', 'd04', 'd05', 'd06', 'd07', 'd08', 'd10', 'd11', 'd12']) {
     try {
-      const res = await stealthFetch(`https://cwwp2.dot.ca.gov/data/${dist}/cctv/cctvStatus${dist.toUpperCase()}.json`, { signal: AbortSignal.timeout(8000) });
+      const res = await timedFetch(`https://cwwp2.dot.ca.gov/data/${dist}/cctv/cctvStatus${dist.toUpperCase()}.json`, { signal: AbortSignal.timeout(8000) });
       if (!res.ok) continue;
       const data = await res.json();
       for (const cam of (data?.data || [])) {
@@ -85,7 +85,7 @@ async function fetchCanadaCameras(): Promise<any[]> {
 
   // Ottawa Municipal Cameras (Comprehensive)
   try {
-    const res = await stealthFetch('https://traffic.ottawa.ca/beta/camera_list', { signal: AbortSignal.timeout(10000) });
+    const res = await timedFetch('https://traffic.ottawa.ca/beta/camera_list', { signal: AbortSignal.timeout(10000) });
     if (res.ok) {
       const data = await res.json();
       for (const cam of (data || [])) {
@@ -101,7 +101,7 @@ async function fetchCanadaCameras(): Promise<any[]> {
 
   // Quebec 511 (Comprehensive - covers Montreal, Quebec City, highways)
   try {
-    const res = await stealthFetch('https://ws.mapserver.transports.gouv.qc.ca/swtq?service=wfs&version=2.0.0&request=getfeature&typename=ms:infos_cameras&outfile=Camera&srsname=EPSG:4326&outputformat=geojson', { signal: AbortSignal.timeout(10000) });
+    const res = await timedFetch('https://ws.mapserver.transports.gouv.qc.ca/swtq?service=wfs&version=2.0.0&request=getfeature&typename=ms:infos_cameras&outfile=Camera&srsname=EPSG:4326&outputformat=geojson', { signal: AbortSignal.timeout(10000) });
     if (res.ok) {
       const data = await res.json();
       for (const feature of (data.features || [])) {
@@ -122,7 +122,7 @@ async function fetchCanadaCameras(): Promise<any[]> {
 
   // Ontario 511 (MTO Highway Cameras)
   try {
-    const res = await stealthFetch('https://511on.ca/api/v2/get/cameras', { signal: AbortSignal.timeout(10000) });
+    const res = await timedFetch('https://511on.ca/api/v2/get/cameras', { signal: AbortSignal.timeout(10000) });
     if (res.ok) {
       const data = await res.json();
       for (const cam of (data || [])) {
@@ -138,7 +138,7 @@ async function fetchCanadaCameras(): Promise<any[]> {
 
   // Ville de Montréal municipal cameras
   try {
-    const res = await stealthFetch('https://ville.montreal.qc.ca/circulation/sites/ville.montreal.qc.ca.circulation/files/cameras.json', { signal: AbortSignal.timeout(8000) });
+    const res = await timedFetch('https://ville.montreal.qc.ca/circulation/sites/ville.montreal.qc.ca.circulation/files/cameras.json', { signal: AbortSignal.timeout(8000) });
     if (res.ok) {
       const data = await res.json();
       for (const cam of (data || [])) {
@@ -161,7 +161,7 @@ async function fetchCanadaCameras(): Promise<any[]> {
 
   // Alberta 511
   try {
-    const res = await stealthFetch('https://511.alberta.ca/api/v2/get/cameras', { signal: AbortSignal.timeout(10000) });
+    const res = await timedFetch('https://511.alberta.ca/api/v2/get/cameras', { signal: AbortSignal.timeout(10000) });
     if (res.ok) {
       const data = await res.json();
       for (const cam of (data || [])) {
@@ -183,7 +183,7 @@ async function fetchUSCentralCameras(): Promise<any[]> {
   const cams: any[] = [];
   // Illinois DOT
   try {
-    const res = await stealthFetch('https://www.travelmidwest.com/lmiga/cameraReport.json', { signal: AbortSignal.timeout(8000) });
+    const res = await timedFetch('https://www.travelmidwest.com/lmiga/cameraReport.json', { signal: AbortSignal.timeout(8000) });
     if (res.ok) {
       const data = await res.json();
       for (const cam of (data?.cameraReports || data || []).slice(0, 800)) {
@@ -239,7 +239,7 @@ async function fetchUSEastCameras(): Promise<any[]> {
   );
   // Florida 511
   try {
-    const res = await stealthFetch('https://fl511.com/api/v2/cameras', { signal: AbortSignal.timeout(8000) });
+    const res = await timedFetch('https://fl511.com/api/v2/cameras', { signal: AbortSignal.timeout(8000) });
     if (res.ok) {
       const data = await res.json();
       for (const cam of (data || []).slice(0, 800)) {
@@ -262,7 +262,7 @@ async function fetchEuropeCameras(): Promise<any[]> {
 
   // Netherlands Rijkswaterstaat
   try {
-    const res = await stealthFetch('https://opendata.ndw.nu/cameras.json', { signal: AbortSignal.timeout(8000) });
+    const res = await timedFetch('https://opendata.ndw.nu/cameras.json', { signal: AbortSignal.timeout(8000) });
     if (res.ok) {
       const data = await res.json();
       for (const cam of (data || []).slice(0, 1000)) {
@@ -287,7 +287,7 @@ async function fetchAsiaCameras(): Promise<any[]> {
 
   // Singapore Live Traffic Images
   try {
-    const res = await stealthFetch('https://api.data.gov.sg/v1/transport/traffic-images', { signal: AbortSignal.timeout(10000) });
+    const res = await timedFetch('https://api.data.gov.sg/v1/transport/traffic-images', { signal: AbortSignal.timeout(10000) });
     if (res.ok) {
       const data = await res.json();
       const items = data.items?.[0]?.cameras || [];

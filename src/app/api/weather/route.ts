@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { stealthFetch } from '@/lib/stealthFetch';
+import { timedFetch } from '@/lib/timed-fetch';
 
 /**
  * BEACON — Severe Weather & Anomalies API
@@ -82,7 +82,7 @@ type NwsResponse = {
 export async function GET() {
   try {
     const [eonetRes, nwsRes] = await Promise.allSettled([
-      stealthFetch('https://eonet.gsfc.nasa.gov/api/v3/events?status=open&limit=100', {
+      timedFetch('https://eonet.gsfc.nasa.gov/api/v3/events?status=open&limit=100', {
         signal: AbortSignal.timeout(10000),
       }),
       fetch('https://api.weather.gov/alerts/active?status=actual&message_type=alert', {
