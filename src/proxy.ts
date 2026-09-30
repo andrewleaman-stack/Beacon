@@ -23,7 +23,7 @@ function hasValidSession(request: NextRequest): boolean {
 // shows no data). Set BEACON_REQUIRE_SESSION=1 once a real login flow exists.
 const REQUIRE_SESSION = process.env.BEACON_REQUIRE_SESSION === '1';
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   if (REQUIRE_SESSION && pathname.startsWith('/api/')) {
