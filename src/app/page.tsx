@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Layers, BarChart3, Newspaper, Search, X, Globe, MapPinned, Radar, Satellite, Moon, ExternalLink, AlertTriangle, Activity, Database, Wifi, Play, Network, PanelLeft, Home, Settings2, Bot } from 'lucide-react';
+import { Layers, BarChart3, Newspaper, Search, X, Globe, MapPinned, Radar, Satellite, Moon, ExternalLink, AlertTriangle, Activity, Database, Wifi, Play, Network, PanelLeft, Home, Settings2, Bot, MapPin } from 'lucide-react';
 import IntelFeed from '@/components/IntelFeed';
 import MarketsPanel from '@/components/MarketsPanel';
 import ScmPanel from '@/components/ScmPanel';
@@ -21,6 +21,7 @@ import AIBriefingPanel from '@/components/AIBriefingPanel';
 import DashboardViewControls from '@/components/DashboardViewControls';
 import RegionContextSection from '@/components/RegionContextSection';
 import TrackPanel, { type TrackTarget } from '@/components/TrackPanel';
+import MyPlacesPanel from '@/components/MyPlacesPanel';
 import {
   DEFAULT_DASHBOARD_VIEW_SETTINGS,
   DEFAULT_HOME_LOCATION,
@@ -348,6 +349,11 @@ export default function Dashboard() {
       setShowRightDrawer(true);
     }
   }, []);
+
+  // My places watchlist (stays mounted so the toolbar dot reflects the worst status)
+  const [showPlaces, setShowPlaces] = useState(false);
+  const [placesLevel, setPlacesLevel] = useState<'clear' | 'watch' | 'advisory' | 'warning' | null>(null);
+  const flyToPlace = useCallback((lat: number, lng: number) => setFlyToLocation({ lat, lng, zoom: 8, ts: Date.now() }), []);
 
   // Tracking / nearby panel (popup TRACK and NEARBY buttons)
   const [trackTarget, setTrackTarget] = useState<TrackTarget | null>(null);
@@ -903,6 +909,14 @@ export default function Dashboard() {
           visualScale={viewSettings.iconScale}
           track={mapTrack}
         />
+        <div className="absolute top-20 left-2 md:left-20 z-[270]" hidden={!showPlaces}>
+          <MyPlacesPanel
+            mapCenter={{ lat: mapView.latitude, lng: mapView.longitude }}
+            onFlyTo={flyToPlace}
+            onClose={() => setShowPlaces(false)}
+            onWorstLevel={setPlacesLevel}
+          />
+        </div>
         {trackTarget && (
           <div className="absolute bottom-24 right-3 md:right-16 z-[260]">
             <TrackPanel
@@ -963,6 +977,21 @@ export default function Dashboard() {
           <Home className="w-5 h-5 text-[var(--cyan-primary)] group-hover:scale-110 transition-transform" />
           <span className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 text-[9px] font-mono text-[var(--text-muted)] whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity glass-panel px-2 py-1 z-[300]">
             HOME · R
+          </span>
+        </button>
+
+        <button
+          onClick={() => setShowPlaces(p => !p)}
+          className={`glass-panel p-3.5 pointer-events-auto hover:border-[var(--gold-primary)]/40 transition-colors group relative ${showPlaces ? 'border-[var(--gold-primary)]/50 bg-[var(--gold-primary)]/10' : ''}`}
+          title="My places"
+          aria-expanded={showPlaces}
+        >
+          <MapPin className="w-5 h-5 text-[var(--gold-primary)] group-hover:scale-110 transition-transform" />
+          {placesLevel && placesLevel !== 'clear' && (
+            <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full" style={{ background: placesLevel === 'warning' ? '#FF6B5E' : placesLevel === 'advisory' ? '#F0B54A' : '#90CAF9' }} aria-label={`Worst place status: ${placesLevel}`} />
+          )}
+          <span className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 text-[9px] font-mono text-[var(--text-muted)] whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity glass-panel px-2 py-1 z-[300]">
+            MY PLACES
           </span>
         </button>
 
