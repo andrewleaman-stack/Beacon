@@ -74,6 +74,9 @@ export async function fetchPhmsaIncidents({ state = 'MI', limit = 50, fetchImpl 
     cache: 'no-store',
     headers: { 'User-Agent': 'BEACON/1.0 phmsa-incidents', 'Accept': 'application/json' },
   });
+  // Since 2026 DOT serves qdme-9bbm as a link to a zip on phmsa.dot.gov instead of a
+  // queryable table (HTTP 403 "non-tabular"), and that site blocks automated downloads.
+  if (response.status === 403) throw new Error('PHMSA incident data is no longer published as a queryable dataset (DOT Socrata 403: non-tabular)');
   if (!response.ok) throw new Error(`PHMSA Socrata returned HTTP ${response.status}`);
   const rows = await response.json();
   return (Array.isArray(rows) ? rows : []).map(normalizePhmsaIncident).filter(Boolean);

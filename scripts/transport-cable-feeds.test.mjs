@@ -87,3 +87,28 @@ test('normalizeCableDownOutage maps active outage tracker records', () => {
   assert.equal(fault.severity, 'high');
   assert.equal(fault.source, 'SubseaDown active outage tracker');
 });
+
+test('normalizeFraRailIncident reads the 2026 Form 54 column names', () => {
+  const incident = normalizeFraRailIncident({
+    reportkey: 'CSX000232460202607',
+    date: '2026-07-25T00:00:00.000',
+    stateabbr: 'MI',
+    countyname: 'KENT',
+    station: 'GRAND RAPIDS',
+    reportingrailroadname: 'CSX Transportation',
+    accidenttype: 'Derailment',
+    primaryaccidentcause: 'Passed couplers',
+    tracktype: 'Yard',
+    totalpersonskilled: '0',
+    totalpersonsinjured: '0',
+    totaldamagecost: '44214',
+    latitude: '42.95',
+    longitude: '-85.68',
+  });
+  assert.equal(incident.id, 'fra-CSX000232460202607');
+  assert.equal(incident.title, 'Derailment — MI');
+  assert.equal(incident.city, 'GRAND RAPIDS');
+  assert.equal(incident.railroad, 'CSX Transportation');
+  assert.equal(incident.damage, 44214);
+  assert.equal(incident.severity, 'high');
+});

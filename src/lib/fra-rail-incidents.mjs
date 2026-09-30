@@ -17,10 +17,10 @@ function first(row, names) {
 }
 
 function severityFrom(row) {
-  const killed = number(first(row, ['totkld', 'killed', 'total_killed', 'fatalities']), 0);
-  const injured = number(first(row, ['totinj', 'injured', 'total_injured', 'injuries']), 0);
-  const damage = number(first(row, ['damage', 'total_damage', 'total_damages']), 0);
-  const type = clean(first(row, ['type', 'accident_type', 'accident_type_name'])).toLowerCase();
+  const killed = number(first(row, ['totalpersonskilled', 'totkld', 'killed', 'total_killed', 'fatalities']), 0);
+  const injured = number(first(row, ['totalpersonsinjured', 'totinj', 'injured', 'total_injured', 'injuries']), 0);
+  const damage = number(first(row, ['totaldamagecost', 'damage', 'total_damage', 'total_damages']), 0);
+  const type = clean(first(row, ['accidenttype', 'type', 'accident_type', 'accident_type_name'])).toLowerCase();
   if (killed > 0) return 'critical';
   if (injured > 0 || type.includes('collision') || type.includes('derail')) return 'high';
   if (damage >= 250_000) return 'elevated';
@@ -39,25 +39,25 @@ function parseDate(row) {
 export function normalizeFraRailIncident(row) {
   const lat = number(first(row, ['latitude', 'lat']));
   const lng = number(first(row, ['longitude', 'lon', 'lng']));
-  const id = clean(first(row, ['report_number', 'incident_number', 'accident_number', 'id'])) || `${clean(first(row, ['railroad', 'railroad_name', 'rr']))}-${parseDate(row)}`;
-  const accidentType = clean(first(row, ['accident_type', 'type', 'type_name', 'accident_type_name']));
+  const id = clean(first(row, ['reportkey', 'report_number', 'incident_number', 'accident_number', 'accidentnumber', 'id'])) || `${clean(first(row, ['reportingrailroadcode', 'railroad', 'railroad_name', 'rr']))}-${parseDate(row)}`;
+  const accidentType = clean(first(row, ['accidenttype', 'accident_type', 'type', 'type_name', 'accident_type_name']));
   return {
     id: `fra-${id}`,
     type: 'rail',
-    title: `${accidentType || 'Rail equipment accident'}${clean(first(row, ['state'])) ? ` — ${clean(first(row, ['state']))}` : ''}`,
+    title: `${accidentType || 'Rail equipment accident'}${clean(first(row, ['stateabbr', 'state'])) ? ` — ${clean(first(row, ['stateabbr', 'state']))}` : ''}`,
     description: clean(first(row, ['narrative', 'description'])) || 'FRA Form 54 rail equipment accident/incident record.',
     reportNumber: id,
     date: parseDate(row),
-    state: clean(first(row, ['state', 'state_name', 'st'])),
-    county: clean(first(row, ['county', 'county_name'])),
-    city: clean(first(row, ['city', 'location'])),
-    railroad: clean(first(row, ['railroad', 'railroad_name', 'rr', 'railroad_code'])),
+    state: clean(first(row, ['stateabbr', 'state', 'statename', 'st'])),
+    county: clean(first(row, ['countyname', 'county', 'county_name'])),
+    city: clean(first(row, ['station', 'city'])),
+    railroad: clean(first(row, ['reportingrailroadname', 'railroad', 'railroad_name', 'rr', 'railroad_code'])),
     accidentType,
-    cause: clean(first(row, ['cause', 'primary_cause', 'cause_code'])),
-    trackType: clean(first(row, ['track_type', 'type_of_track'])),
-    fatalities: number(first(row, ['totkld', 'killed', 'total_killed', 'fatalities']), 0),
-    injuries: number(first(row, ['totinj', 'injured', 'total_injured', 'injuries']), 0),
-    damage: number(first(row, ['damage', 'total_damage', 'total_damages']), 0),
+    cause: clean(first(row, ['primaryaccidentcause', 'cause', 'primary_cause', 'cause_code'])),
+    trackType: clean(first(row, ['tracktype', 'track_type', 'type_of_track'])),
+    fatalities: number(first(row, ['totalpersonskilled', 'totkld', 'killed', 'total_killed', 'fatalities']), 0),
+    injuries: number(first(row, ['totalpersonsinjured', 'totinj', 'injured', 'total_injured', 'injuries']), 0),
+    damage: number(first(row, ['totaldamagecost', 'damage', 'total_damage', 'total_damages']), 0),
     lat,
     lng,
     mappable: lat != null && lng != null,
@@ -69,8 +69,9 @@ export function normalizeFraRailIncident(row) {
 }
 
 export async function fetchFraRailIncidents({ state = 'MI', limit = 50, fetchImpl = fetch } = {}) {
-  const params = new URLSearchParams({ '$limit': String(Math.min(limit, 500)), '$order': ':id DESC' });
-  if (state) params.set('state', state);
+  // Newest accidents first. FRA renamed the state column to `stateabbr` in 2026.
+  const params = new URLSearchParams({ '$limit': String(Math.min(limit, 500)), '$order': 'date DESC' });
+  if (state) params.set('stateabbr', state);
   const response = await fetchImpl(`${FRA_FORM54_URL}?${params.toString()}`, {
     cache: 'no-store',
     headers: { 'User-Agent': 'BEACON/1.0 fra-rail-incidents', 'Accept': 'application/json' },

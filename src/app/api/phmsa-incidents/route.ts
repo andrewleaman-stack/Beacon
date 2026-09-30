@@ -30,7 +30,7 @@ export async function GET(request: Request) {
       status: 'upstream_unavailable',
       error: 'PHMSA upstream unavailable',
       message: error.message,
-      notice: 'Endpoint is wired, but data.transportation.gov/PHMSA is currently unavailable or rate limited. Returning empty set instead of poisoning feed-health. Government API goblin contained.',
+      notice: 'PHMSA moved pipeline incident data to zip downloads on phmsa.dot.gov, which block automated access. No live source is available; the layer stays empty rather than showing stale data.',
     }, { status: 200, headers: { 'Cache-Control': 'public, s-maxage=900, stale-while-revalidate=3600' } });
   }
 }
