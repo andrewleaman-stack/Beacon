@@ -4,7 +4,7 @@ import { memo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plane, Satellite, Activity, Sun, AlertTriangle, Camera, Flame, Target,
-  CloudLightning, Cloud, Radiation, Tv, Anchor, Ship, Newspaper,
+  CloudLightning, Cloud, CloudRain, Zap, Wind, Trees, Radiation, Tv, Anchor, Ship, Newspaper,
   Network, Share2, Radio, BookOpen
 } from 'lucide-react';
 import FeedViewHotkeys from './FeedViewHotkeys';
@@ -64,6 +64,10 @@ const LAYER_GROUPS = [
       { key: 'earthquakes', label: 'Earthquakes (24h)', icon: Activity, color: '#F9A825', dataKey: 'earthquakes' },
       { key: 'fires', label: 'Active Fires', icon: Flame, color: '#E65100', dataKey: 'fires' },
       { key: 'weather', label: 'Severe Weather', icon: CloudLightning, color: '#7E57C2', dataKey: 'weather_events' },
+      { key: 'weather_radar', label: 'Precipitation Radar', icon: CloudRain, color: '#42A5F5', dataKey: '' },
+      { key: 'lightning', label: 'Lightning (15 min, Americas)', icon: Zap, color: '#FFEE58', dataKey: '' },
+      { key: 'wind', label: 'Surface Wind', icon: Wind, color: '#90CAF9', dataKey: '' },
+      { key: 'forest_alerts', label: 'Forest Loss Alerts', icon: Trees, color: '#EC407A', dataKey: '' },
     ],
   },
   {
