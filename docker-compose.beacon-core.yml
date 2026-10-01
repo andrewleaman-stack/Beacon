@@ -32,3 +32,22 @@ services:
       retries: 3
       start_period: 45s
     restart: unless-stopped
+
+  # Entity-graph lookups (sanctions, Wikidata, IP registries). Internal only: the
+  # beacon container reaches it at http://beacon-intel:4000; no port is published.
+  beacon-intel:
+    image: ghcr.io/andrewleaman-stack/beacon-intel:latest
+    build:
+      context: ./intel
+      dockerfile: Dockerfile
+    container_name: beacon-intel
+    environment:
+      NODE_OPTIONS: --dns-result-order=ipv4first --max-old-space-size=160
+    mem_limit: 256m
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:4000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
