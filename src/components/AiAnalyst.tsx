@@ -425,7 +425,8 @@ export default function AiAnalyst({ data, embedded = false }: AiAnalystProps) {
                 ? 'relative w-full h-full min-h-[520px] flex flex-col rounded-2xl overflow-hidden'
                 : 'fixed bottom-0 right-0 md:bottom-6 md:right-6 z-[700] w-full md:w-[440px] h-[85vh] md:h-[680px] md:max-h-[85vh] flex flex-col md:rounded-2xl overflow-hidden'}
               style={{
-                background: 'linear-gradient(180deg, rgba(8, 10, 20, 0.96) 0%, rgba(6, 6, 12, 0.98) 100%)',
+                // Theme variables: the same deep navy in dark themes, light surfaces in the light ones.
+                background: 'linear-gradient(180deg, var(--bg-panel) 0%, var(--bg-panel-solid) 100%)',
                 border: '1px solid rgba(212, 175, 55, 0.2)',
                 boxShadow:
                   '0 0 60px rgba(0, 0, 0, 0.8), 0 0 30px rgba(212, 175, 55, 0.08), 0 1px 0 rgba(212, 175, 55, 0.1) inset',
@@ -751,7 +752,7 @@ export default function AiAnalyst({ data, embedded = false }: AiAnalystProps) {
                 className="shrink-0 px-3 py-2.5"
                 style={{
                   borderTop: '1px solid rgba(212, 175, 55, 0.1)',
-                  background: 'rgba(6, 6, 12, 0.8)',
+                  background: 'var(--bg-panel)',
                 }}
               >
                 {/* Quick action */}
