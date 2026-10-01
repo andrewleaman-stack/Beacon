@@ -1,7 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Volume2, VolumeX, Maximize2, Minimize2, Repeat, Plus, ExternalLink, Save, Trash2, X } from 'lucide-react';
+import { Volume2, VolumeX, Maximize2, Minimize2, Repeat, Plus, ExternalLink, Save, Trash2, X, Sparkles } from 'lucide-react';
+import { buildHotspots, pickAuto } from '@/lib/auto-lineup.mjs';
+import { DEFAULT_WALL } from '@/lib/live-channels.mjs';
 import ChannelBrowser, { feedStatus, type Feed } from './ChannelBrowser';
 import { GRIDS, gridSize, type GridId, type WallState } from './news-wall-state';
 
@@ -26,8 +28,31 @@ export default function NewsWall({ feeds, state, update, layout }: Props) {
   const lineup = state.lineups[state.active] || state.lineups[0];
   const { cols: gc, rows: gr, count: gridCount } = gridSize(state.grid);
   const count = phone ? Math.min(gridCount, 4) : gridCount;
-  const slots = useMemo(() => Array.from({ length: count }, (_, i) => lineup?.ids[i] ?? null), [lineup, count]);
   const byId = useMemo(() => new Map((feeds || []).map((f) => [f.id, f])), [feeds]);
+
+  // Auto: rank live channels against today's news hotspots (GDELT) and situations.
+  const [hotspots, setHotspots] = useState<any[] | null>(null);
+  const [autoAt, setAutoAt] = useState<Date | null>(null);
+  useEffect(() => {
+    if (!state.auto) return;
+    const load = () => Promise.all([
+      fetch('/api/gdelt').then((r) => r.json()).catch(() => ({})),
+      fetch('/api/situations').then((r) => r.json()).catch(() => ({})),
+    ]).then(([g, s]) => { setHotspots(buildHotspots({ gdelt: g?.events, situations: s?.situations })); setAutoAt(new Date()); });
+    load();
+    const iv = setInterval(() => { if (!document.hidden) load(); }, 15 * 60_000);
+    return () => clearInterval(iv);
+  }, [state.auto]);
+  const lastAuto = useRef<(string | null)[]>([]);
+  const autoPicks = useMemo(() => {
+    if (!state.auto || !feeds || !hotspots) return null;
+    const picks = pickAuto(feeds as any, hotspots, { count, previous: lastAuto.current, fallback: DEFAULT_WALL });
+    lastAuto.current = picks.map((p) => p.id);
+    return picks;
+  }, [state.auto, feeds, hotspots, count]);
+  const reasons = useMemo(() => new Map((autoPicks || []).map((p) => [p.id, p.reason])), [autoPicks]);
+
+  const slots = useMemo(() => Array.from({ length: count }, (_, i) => (state.auto ? autoPicks?.[i]?.id : lineup?.ids[i]) ?? null), [state.auto, autoPicks, lineup, count]);
   const audio = state.audio < count ? state.audio : -1;
 
   const [focused, setFocused] = useState<number | null>(null);
@@ -153,8 +178,11 @@ export default function NewsWall({ feeds, state, update, layout }: Props) {
     <div className="flex flex-col gap-3" style={{ height: '100%', minHeight: 0 }}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className={phone ? 'flex items-center gap-1.5' : 'flex items-center gap-1.5 flex-wrap'} role="tablist" aria-label="Lineups" style={phone ? { overflowX: 'auto', flexWrap: 'nowrap', width: '100%', paddingBottom: 2 } : undefined}>
+          <button role="tab" className="ui-chip flex items-center gap-1" style={{ flexShrink: 0 }} aria-selected={state.auto} title="Channels picked from what's happening in the world" onClick={() => { update((s) => ({ ...s, auto: true })); setFocused(null); }}>
+            <Sparkles size={14} aria-hidden="true" /> Auto
+          </button>
           {state.lineups.map((l, i) => (
-            <button key={`${l.name}-${i}`} role="tab" className="ui-chip" style={{ flexShrink: 0 }} aria-selected={i === state.active} onClick={() => { update((s) => ({ ...s, active: i })); setFocused(null); }}>{l.name}</button>
+            <button key={`${l.name}-${i}`} role="tab" className="ui-chip" style={{ flexShrink: 0 }} aria-selected={!state.auto && i === state.active} onClick={() => { update((s) => ({ ...s, active: i, auto: false })); setFocused(null); }}>{l.name}</button>
           ))}
           {naming === null ? (
             <button onClick={() => setNaming('')} className="ui-chip flex items-center gap-1" aria-label="Save this wall as a new lineup"><Save size={14} aria-hidden="true" /> Save as…</button>
@@ -166,7 +194,7 @@ export default function NewsWall({ feeds, state, update, layout }: Props) {
               <button type="button" onClick={() => setNaming(null)} aria-label="Cancel" className="flex items-center justify-center" style={{ width: 36, height: 36, border: 0, background: 'transparent', color: 'var(--ui-text-2)', cursor: 'pointer' }}><X size={16} aria-hidden="true" /></button>
             </form>
           )}
-          {state.lineups.length > 1 && naming === null && (
+          {!state.auto && state.lineups.length > 1 && naming === null && (
             <button onClick={deleteLineup} aria-label={`Delete lineup ${lineup?.name}`} title="Delete this lineup" className="flex items-center justify-center" style={{ width: 36, height: 36, border: 0, background: 'transparent', color: 'var(--ui-text-3)', cursor: 'pointer' }}><Trash2 size={16} aria-hidden="true" /></button>
           )}
         </div>
@@ -199,7 +227,9 @@ export default function NewsWall({ feeds, state, update, layout }: Props) {
                     allow="autoplay; encrypted-media; picture-in-picture; fullscreen" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 0 }} />
                 ) : (
                   <div className="absolute flex flex-col items-center justify-center gap-2 text-center" style={{ inset: 0, padding: 16, color: '#E6E8EC', background: '#12151B' }}>
-                    {!id ? (
+                    {!id && state.auto ? (
+                      <span style={{ fontSize: 14, opacity: 0.8 }}>{autoPicks ? 'No more live channels to pick' : 'Picking a channel…'}</span>
+                    ) : !id ? (
                       <button onClick={() => setPicking(i)} className="flex items-center gap-2" style={{ ...btn, background: 'transparent', color: '#E6E8EC', borderColor: 'rgba(255,255,255,0.25)' }}><Plus size={16} aria-hidden="true" /> Add channel</button>
                     ) : feeds === null || f?.live === null ? (
                       <span style={{ fontSize: 14, opacity: 0.8 }}>{f ? `Checking ${f.name}…` : 'Loading…'}</span>
@@ -241,9 +271,14 @@ export default function NewsWall({ feeds, state, update, layout }: Props) {
                     {f && feedStatus(f).label === 'LIVE' && <span style={{ fontSize: 10, padding: '1px 5px', borderRadius: 4, background: 'var(--live-red)', color: '#fff' }}>LIVE</span>}
                   </div>
                 )}
+                {id && state.auto && reasons.get(id) && (
+                  <div className="absolute truncate" style={{ left: 8, bottom: on && canSound ? 60 : 8, zIndex: 2, maxWidth: 'calc(100% - 16px)', padding: '3px 9px', borderRadius: 999, background: 'rgba(0,0,0,0.62)', color: '#fff', fontSize: 12, pointerEvents: 'none' }}>
+                    {reasons.get(id)}
+                  </div>
+                )}
                 {id && (
                   <div className="absolute flex gap-1.5" style={{ right: 8, top: 8, zIndex: 2 }}>
-                    <button onClick={() => setPicking(i)} aria-label={`Change channel ${i + 1}`} title="Change channel" className="flex items-center justify-center" style={iconBtn}><Repeat size={16} aria-hidden="true" /></button>
+                    {!state.auto && <button onClick={() => setPicking(i)} aria-label={`Change channel ${i + 1}`} title="Change channel" className="flex items-center justify-center" style={iconBtn}><Repeat size={16} aria-hidden="true" /></button>}
                     {!phone && (
                       <button onClick={() => { setFocused(focused === i ? null : i); setAudio(i); }} aria-label={focused === i ? 'Back to the wall' : `Enlarge ${f?.name || 'channel'}`} title={focused === i ? 'Back to the wall' : 'Enlarge'} className="flex items-center justify-center" style={iconBtn}>
                         {focused === i ? <Minimize2 size={16} aria-hidden="true" /> : <Maximize2 size={16} aria-hidden="true" />}
@@ -258,6 +293,7 @@ export default function NewsWall({ feeds, state, update, layout }: Props) {
       </div>
 
       <p style={{ margin: 0, fontSize: 13, color: 'var(--ui-text-2)' }}>
+        {state.auto && (hotspots ? `Auto picks from ${hotspots.length} news hotspots, updated ${autoAt?.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} · ` : 'Finding what\u2019s in the news… · ')}
         Tap a screen to hear it{phone ? '' : ' · keys 1–9 pick the sound, M mutes, F enlarges'}. No sound? Tap the speaker in the video&apos;s own controls.
       </p>
 
