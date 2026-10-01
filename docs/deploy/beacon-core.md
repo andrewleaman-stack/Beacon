@@ -126,7 +126,7 @@ curl -fsS http://127.0.0.1:3011/api/health
 
 `beacon-intel` is the entity-graph service (OpenSanctions, Wikidata, RIPEstat, ipwho.is;
 no API keys). It has no published port; the app reaches it at `http://beacon-intel:4000`.
-Check it with `docker exec beacon-intel wget -qO- http://localhost:4000/health`.
+Check it with `docker exec beacon-intel wget -qO- http://127.0.0.1:4000/health`.
 
 ## Rollback
 
