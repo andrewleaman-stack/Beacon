@@ -16,12 +16,44 @@ interface BeaconMapProps {
   flyToLocation?: { lat: number; lng: number; zoom?: number; ts: number } | null;
   projection?: 'mercator' | 'globe';
   mapStyle?: string;
+  /** Base map palette: CARTO Dark Matter, or the light Positron / Voyager styles for light themes. */
+  basemap?: Basemap;
   sweepData?: any;
   scanTargets?: any[];
   demoMode?: boolean;
   visualScale?: number;
   /** Target being tracked: trail as [lng, lat] points, current head, and whether the camera follows. */
   track?: { trail: [number, number][]; head: [number, number] | null; follow: boolean } | null;
+}
+
+export type Basemap = 'dark' | 'positron' | 'voyager';
+
+const BASEMAP_URLS: Record<Basemap, string> = {
+  dark: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
+  positron: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
+  voyager: 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json',
+};
+
+// The three CARTO styles share layer ids and layouts, so a theme change only
+// repaints the base layers and never touches BEACON's own data layers.
+const basemapStyleCache = new Map<Basemap, Promise<any>>();
+function loadBasemapStyle(b: Basemap): Promise<any> {
+  let p = basemapStyleCache.get(b);
+  if (!p) {
+    p = fetch(`/api/proxy-tiles?url=${encodeURIComponent(BASEMAP_URLS[b])}`).then((r) => {
+      if (!r.ok) throw new Error(`basemap ${b}: HTTP ${r.status}`);
+      return r.json();
+    });
+    p.catch(() => basemapStyleCache.delete(b));
+    basemapStyleCache.set(b, p);
+  }
+  return p;
+}
+
+function skyFor(b: Basemap) {
+  return b === 'dark'
+    ? { 'sky-color': '#04040A', 'sky-horizon-blend': 0.5, 'horizon-color': '#0a0a1a', 'horizon-fog-blend': 0.3, 'fog-color': '#04040A', 'fog-ground-blend': 0.9 }
+    : { 'sky-color': '#DCE3EC', 'sky-horizon-blend': 0.5, 'horizon-color': '#F2F4F7', 'horizon-fog-blend': 0.3, 'fog-color': '#DCE3EC', 'fog-ground-blend': 0.9 };
 }
 
 function computeSolarTerminator(): [number, number][] {
@@ -91,12 +123,13 @@ function actionButton(label: string, color: string, action: 'track' | 'nearby', 
   return `<button data-beacon-action="${action}" data-beacon-payload="${escapeHtml(JSON.stringify(payload))}" style="width:100%;margin-top:6px;padding:6px 12px;background:${color}22;border:1px solid ${color}80;color:${color};font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:bold;letter-spacing:0.1em;border-radius:4px;cursor:pointer;">${label}</button>`;
 }
 
-function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightClick, onViewStateChange, flyToLocation, projection = 'globe', mapStyle = 'dark', sweepData, scanTargets = [], demoMode = false, visualScale = 1, track = null }: BeaconMapProps) {
+function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightClick, onViewStateChange, flyToLocation, projection = 'globe', mapStyle = 'dark', basemap = 'dark', sweepData, scanTargets = [], demoMode = false, visualScale = 1, track = null }: BeaconMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<ML.Map | null>(null);
   const popupRef = useRef<ML.Popup | null>(null);
   const [mapReady, setMapReady] = useState(false);
   const prevStyleRef = useRef(mapStyle);
+  const basemapRef = useRef<Basemap>('dark');
   const baseVisualValuesRef = useRef<Map<string, any>>(new Map());
 
   // Create aircraft icon on canvas (for WebGL symbol layer)
@@ -1526,7 +1559,7 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
     // Switch to globe and fly to the sweep location
     try {
       (map as any).setProjection({ type: 'globe' });
-      map.setSky({ 'sky-color': '#0A0A0F', 'sky-horizon-blend': 0.02, 'horizon-color': '#0A0A0F', 'horizon-fog-blend': 0.02 });
+      map.setSky(basemapRef.current === 'dark' ? { 'sky-color': '#0A0A0F', 'sky-horizon-blend': 0.02, 'horizon-color': '#0A0A0F', 'horizon-fog-blend': 0.02 } : skyFor(basemapRef.current) as any);
     } catch { /* projection may not be supported */ }
 
     map.flyTo({ center: centerCoord, zoom: 14, pitch: 50, bearing: -20, duration: 3000, essential: true });
@@ -1640,14 +1673,7 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
       if (projection === 'globe') {
         map.easeTo({ pitch: 20, duration: 1200 });
         try {
-          (map as any).setSky({
-            'sky-color': '#04040A',
-            'sky-horizon-blend': 0.5,
-            'horizon-color': '#0a0a1a',
-            'horizon-fog-blend': 0.3,
-            'fog-color': '#04040A',
-            'fog-ground-blend': 0.9,
-          });
+          (map as any).setSky(skyFor(basemapRef.current));
         } catch (e) { console.warn('[BEACON] Suppressed error:', e instanceof Error ? e.message : e); }
       } else {
         map.easeTo({ pitch: 0, duration: 800 });
@@ -1656,6 +1682,37 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
       console.warn('Projection switch failed:', e);
     }
   }, [mapReady, projection]);
+
+  // Light / dark base map: repaint CARTO's layers in place to match the UI theme.
+  useEffect(() => {
+    if (!mapReady || !mapRef.current) return;
+    if (basemap === basemapRef.current) return;
+    const map = mapRef.current;
+    let cancelled = false;
+    Promise.all([loadBasemapStyle(basemapRef.current), loadBasemapStyle(basemap)]).then(([from, to]) => {
+      if (cancelled || mapRef.current !== map) return;
+      const fromPaint = new Map<string, Record<string, unknown>>(from.layers.map((l: any) => [l.id, l.paint || {}]));
+      for (const layer of to.layers) {
+        if (!map.getLayer(layer.id)) continue;
+        const next = layer.paint || {};
+        const keys = new Set([...Object.keys(fromPaint.get(layer.id) || {}), ...Object.keys(next)]);
+        for (const key of keys) {
+          try { map.setPaintProperty(layer.id, key as any, next[key]); } catch { /* property not valid for this layer type */ }
+        }
+      }
+      const light = basemap !== 'dark';
+      // BEACON's own labels use dark halos; flip them so text stays readable on a light map.
+      for (const l of map.getStyle().layers || []) {
+        if (l.type !== 'symbol' || (l as any).source === 'carto') continue;
+        if (map.getPaintProperty(l.id, 'text-halo-color') === undefined) continue;
+        map.setPaintProperty(l.id, 'text-halo-color', light ? 'rgba(255,255,255,0.92)' : '#000');
+      }
+      if (map.getLayer('day-night-fill')) map.setPaintProperty('day-night-fill', 'fill-opacity', light ? 0.07 : 0.35);
+      basemapRef.current = basemap;
+      try { (map as any).setSky(skyFor(basemap)); } catch { /* sky needs globe support */ }
+    }).catch((e) => console.warn('[BEACON] Basemap switch failed:', e instanceof Error ? e.message : e));
+    return () => { cancelled = true; };
+  }, [mapReady, basemap]);
 
   // Satellite / Dark style switching
   useEffect(() => {

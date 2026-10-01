@@ -710,6 +710,7 @@ export default function Dashboard() {
       onRightClick={handleRightClick} 
       onViewStateChange={setMapView} 
       flyToLocation={flyToLocation}
+      basemap={uiLayout === 'classic' ? 'dark' : uiTheme === 'command-light' ? 'positron' : uiTheme === 'atlas-day' ? 'voyager' : 'dark'}
       sweepData={sweepData}
       scanTargets={scanTargets}
       demoMode={demoMode}
