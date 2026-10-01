@@ -259,7 +259,10 @@ export default function Dashboard() {
       p.set('zoom', mapView.zoom.toFixed(2));
       const active = Object.entries(activeLayers).filter(([,v]) => v).map(([k]) => k).join(',');
       p.set('layers', active);
-      const url = `${window.location.pathname}?${p.toString()}`;
+      const mode = new URLSearchParams(window.location.search).get('mode');
+      if (mode) p.set('mode', mode);
+      // Keep the #space so a reload stays on the same screen.
+      const url = `${window.location.pathname}?${p.toString()}${window.location.hash}`;
       window.history.replaceState(null, '', url);
     }, 1500);
   }, [mapView, activeLayers]);
