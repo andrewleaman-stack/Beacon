@@ -104,11 +104,11 @@ jobs:
         # beacon is the app; beacon-intel is the entity-graph service in ./intel.
         include:
           - image: beacon
-            context: ${{ matrix.context }}
+            context: .
             platform: linux/amd64
             runner: ubuntu-latest
           - image: beacon
-            context: ${{ matrix.context }}
+            context: .
             platform: linux/arm64
             runner: ubuntu-24.04-arm
           - image: beacon-intel
