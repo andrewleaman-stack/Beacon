@@ -44,3 +44,6 @@ scanner_backend_backup.js
 # Security - Prevent accidental manual leaks
 *Manual*.md
 
+
+# Copied from node_modules by scripts/vendor-maplibre.mjs
+/public/vendor/maplibre-gl/

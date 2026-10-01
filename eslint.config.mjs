@@ -14,6 +14,8 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     // Unfinished Phase 2 page rewrite kept for reference; not part of src/app.
     "page.tsx",
+    // Third-party MapLibre build copied by scripts/vendor-maplibre.mjs.
+    "public/vendor/**",
   ]),
   {
     files: ["**/*.{ts,tsx,js,jsx}"],
