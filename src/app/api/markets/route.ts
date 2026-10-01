@@ -106,7 +106,7 @@ const OIL_NAMES: Record<string, string> = { 'CL=F': 'WTI Crude', 'BZ=F': 'Brent 
 const CRYPTO_NAMES: Record<string, string> = { 'BTC-USD': 'Bitcoin', 'ETH-USD': 'Ethereum' };
 const INDEX_NAMES: Record<string, string> = { 'ES=F': 'S&P 500', 'NQ=F': 'Nasdaq 100' };
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     // Fetch all in parallel
     const [stockResults, oilResults, commodityResults, yahooResults, indexResults, cgCrypto] = await Promise.all([
@@ -141,7 +141,7 @@ export async function GET() {
     // --- SCM Integration: Chokepoint-Commodity Correlation ---
     const scm_alerts: string[] = [];
     try {
-      const maritimeRes = await fetch('http://127.0.0.1:3000/api/maritime', { signal: AbortSignal.timeout(3000) });
+      const maritimeRes = await fetch(`${new URL(request.url).origin}/api/maritime`, { signal: AbortSignal.timeout(8000) });
       if (maritimeRes.ok) {
         const maritimeData = await maritimeRes.json();
         const chokepoints = maritimeData.chokepoints || [];
@@ -150,14 +150,16 @@ export async function GET() {
         const suez = chokepoints.find((c: any) => c.name === 'Suez Canal');
         const panama = chokepoints.find((c: any) => c.name === 'Panama Canal');
 
+        // Risk is assessed live (PortWatch transits + security reports); alerts quote the evidence.
+        const why = (c: any) => (c.risk_evidence?.length ? ` (${c.risk_evidence.join('; ')})` : '');
         if (hormuz && (hormuz.risk === 'CRITICAL' || hormuz.risk === 'HIGH')) {
-          scm_alerts.push(`🚨 HORMUZ ${hormuz.risk}: High risk of WTI/Brent Crude price spike due to congestion.`);
+          scm_alerts.push(`🚨 HORMUZ ${hormuz.risk}: risk to WTI/Brent crude supply${why(hormuz)}.`);
         }
         if (suez && (suez.risk === 'CRITICAL' || suez.risk === 'HIGH')) {
-          scm_alerts.push(`🚨 SUEZ ${suez.risk}: Potential supply chain delays impacting European markets and Energy.`);
+          scm_alerts.push(`🚨 SUEZ ${suez.risk}: possible supply-chain delays for European markets and energy${why(suez)}.`);
         }
         if (panama && (panama.risk === 'CRITICAL' || panama.risk === 'HIGH')) {
-          scm_alerts.push(`🚨 PANAMA ${panama.risk}: LNG and Agriculture (Corn/Wheat) shipment delays expected.`);
+          scm_alerts.push(`🚨 PANAMA ${panama.risk}: possible LNG and grain shipment delays${why(panama)}.`);
         }
       }
     } catch (e) {
