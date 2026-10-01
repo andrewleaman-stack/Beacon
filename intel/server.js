@@ -30,7 +30,7 @@ const SDN_REFRESH_MS = 24 * 60 * 60 * 1000; // 24h
 const WIKIDATA_CACHE_TTL = 24 * 60 * 60 * 1000; // 24h
 const WIKIDATA_CACHE_MAX = 10_000;
 
-const ALLOWED_DOMAINS = new Set(['query.wikidata.org', 'data.opensanctions.org', 'www.wikidata.org', 'ip-api.com', 'stat.ripe.net']);
+const ALLOWED_DOMAINS = new Set(['query.wikidata.org', 'data.opensanctions.org', 'www.wikidata.org', 'ipwho.is', 'stat.ripe.net']);
 
 // ════════════════════════════════════════════════════
 // §2 — SANCTIONS INDEX (in-memory graph)
@@ -475,19 +475,27 @@ async function resolveIP(id) {
   const cached = wdCacheGet(`ip:${id}`);
   if (cached) return { ...cached };
 
-  // Step 1: ip-api.com — geolocation, ISP, ASN, proxy/hosting detection
+  // Step 1: ipwho.is — geolocation, ISP and ASN over HTTPS (ip-api.com's free tier is HTTP-only).
   try {
-    const ipApiUrl = `http://ip-api.com/json/${encodeURIComponent(id)}?fields=status,message,country,countryCode,region,regionName,city,zip,lat,lon,timezone,isp,org,as,asname,mobile,proxy,hosting`;
+    const ipApiUrl = `https://ipwho.is/${encodeURIComponent(id)}`;
     const parsed = new URL(ipApiUrl);
     if (!ALLOWED_DOMAINS.has(parsed.hostname)) throw new Error(`Blocked domain: ${parsed.hostname}`);
     const res = await fetch(ipApiUrl, { signal: AbortSignal.timeout(8000) });
     if (res.ok) {
-      const data = await res.json();
-      if (data.status === 'success') {
+      const raw = await res.json();
+      // Map to the field names the graph code below was written for.
+      const conn = raw.connection || {};
+      const data = raw.success ? {
+        isp: conn.isp, org: conn.org, as: conn.asn ? `AS${conn.asn}` : '', asname: conn.org || conn.isp,
+        country: raw.country, countryCode: raw.country_code, city: raw.city, regionName: raw.region,
+        zip: raw.postal, timezone: raw.timezone?.id, lat: raw.latitude, lon: raw.longitude,
+        proxy: false, hosting: false, mobile: false,
+      } : null;
+      if (data) {
         // ISP node
         if (data.isp) {
           const ispId = `company:${data.isp}`;
-          nodes.push({ id: ispId, label: data.isp, type: 'company', properties: { role: 'ISP', org: data.org || '', source: 'ip-api.com' } });
+          nodes.push({ id: ispId, label: data.isp, type: 'company', properties: { role: 'ISP', org: data.org || '', source: 'ipwho.is' } });
           links.push({ source: rootId, target: ispId, label: 'HOSTED_BY' });
           addSanctionsToGraph(data.isp, rootId, nodes, links);
         }
@@ -496,14 +504,14 @@ async function resolveIP(id) {
         if (data.as) {
           const asLabel = data.asname || data.as;
           const asId = `company:${data.as}`;
-          nodes.push({ id: asId, label: asLabel, type: 'company', properties: { as_number: data.as, source: 'ip-api.com' } });
+          nodes.push({ id: asId, label: asLabel, type: 'company', properties: { as_number: data.as, source: 'ipwho.is' } });
           links.push({ source: rootId, target: asId, label: 'ASN' });
         }
 
         // Country node
         if (data.country) {
           const cid = `country:${data.country}`;
-          nodes.push({ id: cid, label: data.country, type: 'country', properties: { code: data.countryCode || '', source: 'ip-api.com' } });
+          nodes.push({ id: cid, label: data.country, type: 'country', properties: { code: data.countryCode || '', source: 'ipwho.is' } });
           links.push({ source: rootId, target: cid, label: 'LOCATED_IN' });
           addSanctionsToGraph(data.country, rootId, nodes, links);
         }
@@ -515,7 +523,7 @@ async function resolveIP(id) {
             id: cityId, label: data.city, type: 'event',
             properties: {
               lat: data.lat, lon: data.lon, region: data.regionName || '',
-              zip: data.zip || '', timezone: data.timezone || '', source: 'ip-api.com',
+              zip: data.zip || '', timezone: data.timezone || '', source: 'ipwho.is',
             },
           });
           links.push({ source: rootId, target: cityId, label: 'GEOLOCATED' });
@@ -526,12 +534,12 @@ async function resolveIP(id) {
           id: rootId, label: id, type: 'ip',
           properties: {
             proxy: !!data.proxy, hosting: !!data.hosting, mobile: !!data.mobile,
-            source: 'ip-api.com',
+            source: 'ipwho.is',
           },
         });
       }
     }
-  } catch (e) { console.warn('[INTEL] ip-api.com error:', e.message); }
+  } catch (e) { console.warn('[INTEL] ipwho.is error:', e.message); }
 
   // Step 2: RIPEstat WHOIS
   try {

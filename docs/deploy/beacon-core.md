@@ -111,13 +111,22 @@ Expected health payload includes:
 
 ## Update procedure
 
+CI builds both images natively for amd64 and arm64 on every merge to `main`
+(`ghcr.io/andrewleaman-stack/beacon` and `ghcr.io/andrewleaman-stack/beacon-intel`),
+so the Pi pulls them instead of building:
+
 ```bash
 cd /srv/apps/beacon
 git pull --ff-only
-docker compose -f docker-compose.beacon-core.yml up -d --build
+docker compose -f docker-compose.beacon-core.yml pull
+docker compose -f docker-compose.beacon-core.yml up -d --no-build
 docker compose -f docker-compose.beacon-core.yml ps
 curl -fsS http://127.0.0.1:3011/api/health
 ```
+
+`beacon-intel` is the entity-graph service (OpenSanctions, Wikidata, RIPEstat, ipwho.is;
+no API keys). It has no published port; the app reaches it at `http://beacon-intel:4000`.
+Check it with `docker exec beacon-intel wget -qO- http://localhost:4000/health`.
 
 ## Rollback
 
