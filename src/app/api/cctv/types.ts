@@ -9,6 +9,8 @@ export interface CctvCamera {
   country: string;
   /** Static image URL (MJPEG/JPG snapshot) */
   feed_url?: string;
+  /** Smaller snapshot for grids, when the source offers one */
+  thumb_url?: string;
   /** Live video stream (HLS .m3u8) or embed URL (YouTube/rtsp.me) */
   stream_url?: string;
   stream_type?: CctvStreamType;
