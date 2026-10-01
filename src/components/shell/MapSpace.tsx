@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Layers, Globe2, Map as MapIcon, Satellite, Moon, Home } from 'lucide-react';
+import { Layers, Globe2, Map as MapIcon, Satellite, Moon, Home, Orbit } from 'lucide-react';
 import LayerSheet from './LayerSheet';
 import MapSearch, { type SearchHit } from './MapSearch';
 import RegionPanel from './RegionPanel';
@@ -25,7 +25,7 @@ function RoundButton({ label, onClick, pressed, children }: { label: string; onC
 }
 
 /** Map chrome drawn over the always-mounted BeaconMap. */
-export default function MapSpace(props: ShellProps) {
+export default function MapSpace(props: ShellProps & { onStartTour?: () => void }) {
   const { layout, data, activeLayers, setActiveLayers, flyTo, regionDossier, dossierLoading, closeDossier, trackTarget, setTrackTarget, setMapTrack, openCamera } = props;
   const touch = layout === 'phone' || layout === 'tablet-portrait';
   const [showLayers, setShowLayers] = useState(false);
@@ -66,6 +66,7 @@ export default function MapSpace(props: ShellProps) {
         {props.mapStyle === 'dark' ? <Satellite size={20} aria-hidden="true" /> : <Moon size={20} aria-hidden="true" />}
       </RoundButton>
       <RoundButton label={`Go home: ${props.homeLocation.label}`} onClick={props.goHome}><Home size={20} aria-hidden="true" /></RoundButton>
+      {props.onStartTour && <RoundButton label="Globe tour: fly to what's happening (T)" onClick={props.onStartTour}><Orbit size={20} aria-hidden="true" /></RoundButton>}
     </div>
   );
 

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback, memo } from 'react';
+import { greatCircle } from '@/lib/globe-tour.mjs';
 import type * as ML from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { trueColorTiles, liveCloudTiles, LIVE_CLOUD_LAYERS, GIBS_ATTRIBUTION } from '@/lib/nasa-imagery.mjs';
@@ -18,6 +19,11 @@ interface BeaconMapProps {
   mapStyle?: string;
   /** Base map palette: CARTO Dark Matter, or the light Positron / Voyager styles for light themes. */
   basemap?: Basemap;
+  /** Cinematic globe tour: flies between stops, orbits each, draws arcs between them. */
+  tour?: GlobeTour | null;
+  onTourStop?: (index: number) => void;
+  /** The user grabbed the map during a tour (pointer, touch or wheel). */
+  onTourInterrupt?: () => void;
   sweepData?: any;
   scanTargets?: any[];
   demoMode?: boolean;
@@ -27,6 +33,16 @@ interface BeaconMapProps {
 }
 
 export type Basemap = 'dark' | 'positron' | 'voyager';
+
+export interface GlobeTourStop { lat: number; lng: number; label: string; detail?: string; severity?: string }
+export interface GlobeTour {
+  stops: GlobeTourStop[];
+  paused: boolean;
+  /** Accent colour for arcs and rings. */
+  color: string;
+  /** Jump to a stop; `ts` makes repeated jumps to the same index count. */
+  jump?: { index: number; ts: number };
+}
 
 const BASEMAP_URLS: Record<Basemap, string> = {
   dark: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
@@ -123,7 +139,7 @@ function actionButton(label: string, color: string, action: 'track' | 'nearby', 
   return `<button data-beacon-action="${action}" data-beacon-payload="${escapeHtml(JSON.stringify(payload))}" style="width:100%;margin-top:6px;padding:6px 12px;background:${color}22;border:1px solid ${color}80;color:${color};font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:bold;letter-spacing:0.1em;border-radius:4px;cursor:pointer;">${label}</button>`;
 }
 
-function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightClick, onViewStateChange, flyToLocation, projection = 'globe', mapStyle = 'dark', basemap = 'dark', sweepData, scanTargets = [], demoMode = false, visualScale = 1, track = null }: BeaconMapProps) {
+function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightClick, onViewStateChange, flyToLocation, projection = 'globe', mapStyle = 'dark', basemap = 'dark', tour = null, onTourStop, onTourInterrupt, sweepData, scanTargets = [], demoMode = false, visualScale = 1, track = null }: BeaconMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<ML.Map | null>(null);
   const popupRef = useRef<ML.Popup | null>(null);
@@ -1693,6 +1709,120 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
       console.warn('Projection switch failed:', e);
     }
   }, [mapReady, projection]);
+
+
+  // ── Globe tour ──
+  // Fly to a stop (tilted), orbit slowly while the caption shows, pull back into space,
+  // then draw an arc to the next stop. Rings pulse at the current stop.
+  const tourIndexRef = useRef(0);
+  const tourCallbacks = useRef({ onTourStop, onTourInterrupt });
+  tourCallbacks.current = { onTourStop, onTourInterrupt };
+  const projectionRef = useRef(projection);
+  projectionRef.current = projection;
+  const tourActive = Boolean(tour && tour.stops.length);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!mapReady || !map || !tour || !tour.stops.length || tour.paused) return;
+    let cancelled = false;
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    let raf = 0;
+    const wait = (ms: number) => new Promise<void>((r) => { timers.push(setTimeout(r, ms)); });
+    const settled = () => new Promise<void>((r) => { map.once('moveend', () => r()); });
+    const color = tour.color;
+    const stops = tour.stops;
+
+    try { (map as any).setProjection({ type: 'globe' }); (map as any).setSky(skyFor(basemapRef.current)); } catch { /* globe unsupported */ }
+    const empty = { type: 'FeatureCollection' as const, features: [] as any[] };
+    if (!map.getSource('tour-pulse')) map.addSource('tour-pulse', { type: 'geojson', data: empty });
+    if (!map.getSource('tour-arc')) map.addSource('tour-arc', { type: 'geojson', data: empty, lineMetrics: true });
+    if (!map.getLayer('tour-arc')) map.addLayer({ id: 'tour-arc', type: 'line', source: 'tour-arc', layout: { 'line-cap': 'round' }, paint: { 'line-width': 3, 'line-gradient': ['interpolate', ['linear'], ['line-progress'], 0, 'rgba(0,0,0,0)', 1, 'rgba(0,0,0,0)'] } });
+    for (const id of ['tour-ring-a', 'tour-ring-b']) {
+      if (!map.getLayer(id)) map.addLayer({ id, type: 'circle', source: 'tour-pulse', paint: { 'circle-radius': 0, 'circle-color': 'rgba(0,0,0,0)', 'circle-stroke-width': 2.5, 'circle-stroke-color': color, 'circle-stroke-opacity': 0, 'circle-pitch-alignment': 'map' } });
+    }
+    if (!map.getLayer('tour-dot')) map.addLayer({ id: 'tour-dot', type: 'circle', source: 'tour-pulse', paint: { 'circle-radius': 6, 'circle-color': color, 'circle-stroke-width': 2, 'circle-stroke-color': '#fff', 'circle-pitch-alignment': 'map' } });
+    for (const id of ['tour-ring-a', 'tour-ring-b']) map.setPaintProperty(id, 'circle-stroke-color', color);
+    map.setPaintProperty('tour-dot', 'circle-color', color);
+
+    // Pulse rings and the drawing arc share one animation loop.
+    let arcStart = 0;
+    const loop = (now: number) => {
+      if (cancelled) return;
+      ['tour-ring-a', 'tour-ring-b'].forEach((id, k) => {
+        const f = ((now / 1800) + k * 0.5) % 1;
+        map.setPaintProperty(id, 'circle-radius', 8 + f * 46);
+        map.setPaintProperty(id, 'circle-stroke-opacity', 0.75 * (1 - f));
+      });
+      if (arcStart) {
+        // A bright head travels along the arc with a fading tail; stops must strictly increase.
+        const head = Math.min(1, Math.max(0.002, (now - arcStart) / 2600));
+        const pts: [number, string][] = [[0, 'rgba(0,0,0,0)'], [Math.max(0.001, head - 0.35), `${color}00`], [head, color]];
+        if (head < 0.999) pts.push([head + 0.001, 'rgba(0,0,0,0)'], [1, 'rgba(0,0,0,0)']);
+        const stops: (number | string)[] = [];
+        let last = -1;
+        for (const [at, c] of pts) if (at > last) { stops.push(at, c); last = at; }
+        map.setPaintProperty('tour-arc', 'line-gradient', ['interpolate', ['linear'], ['line-progress'], ...stops] as any);
+      }
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+
+    const setGeo = (id: string, features: any[]) => (map.getSource(id) as ML.GeoJSONSource | undefined)?.setData({ type: 'FeatureCollection', features });
+    let i = (tour.jump ? tour.jump.index : tourIndexRef.current) % stops.length;
+    let prev: GlobeTourStop | null = null;
+
+    (async () => {
+      while (!cancelled) {
+        const s = stops[i];
+        tourIndexRef.current = i;
+        tourCallbacks.current.onTourStop?.(i);
+        if (prev) {
+          setGeo('tour-arc', [{ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: greatCircle(prev, s, 96) } }]);
+          arcStart = performance.now();
+        }
+        setGeo('tour-pulse', [{ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: [s.lng, s.lat] } }]);
+        const big = s.severity === 'critical' || s.severity === 'high';
+        map.flyTo({ center: [s.lng, s.lat], zoom: big ? 4.6 : 4, pitch: 52, bearing: (Math.random() * 70) - 35, speed: 0.5, curve: 1.8, essential: true });
+        await settled();
+        if (cancelled) return;
+        // Slow orbit around the stop while the caption is up.
+        map.easeTo({ bearing: map.getBearing() + 28, pitch: 58, duration: 9000, easing: (t) => t, essential: true });
+        await wait(9000);
+        if (cancelled) return;
+        // Pull back to space and keep the planet turning on the way to the next stop.
+        map.easeTo({ zoom: 2.1, pitch: 12, center: [map.getCenter().lng + 25, map.getCenter().lat * 0.6], duration: 2600, essential: true });
+        await wait(2600);
+        if (cancelled) return;
+        prev = s;
+        i = (i + 1) % stops.length;
+      }
+    })();
+
+    // Only real user input pauses the tour, not our own camera moves.
+    const interrupt = (e: any) => { if (e?.originalEvent) tourCallbacks.current.onTourInterrupt?.(); };
+    map.on('mousedown', interrupt);
+    map.on('touchstart', interrupt);
+    map.on('wheel', interrupt);
+    return () => {
+      cancelled = true;
+      timers.forEach(clearTimeout);
+      cancelAnimationFrame(raf);
+      map.off('mousedown', interrupt);
+      map.off('touchstart', interrupt);
+      map.off('wheel', interrupt);
+      map.stop();
+      // Drop the arc on pause/exit; the stop's rings stay while paused.
+      setGeo('tour-arc', []);
+    };
+  }, [mapReady, tour?.stops, tour?.paused, tour?.jump?.ts, tour?.color]);
+
+  // Leaving the tour clears its marks and restores the chosen projection.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!mapReady || !map || tourActive) return;
+    for (const id of ['tour-pulse', 'tour-arc']) (map.getSource(id) as ML.GeoJSONSource | undefined)?.setData({ type: 'FeatureCollection', features: [] });
+    try { (map as any).setProjection({ type: projectionRef.current }); } catch { /* ignore */ }
+  }, [mapReady, tourActive]);
 
   // Light / dark base map: repaint CARTO's layers in place to match the UI theme.
   useEffect(() => {

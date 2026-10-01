@@ -395,3 +395,35 @@
   & [class~="bg-[#111]/90"] { background-color: var(--ui-surface-2); }
   & [style*="border-color: rgb(0, 0, 0)"] { border-color: var(--ui-line-strong) !important; }
 }
+
+/* ── Globe tour ── */
+/* Space behind the globe: a starfield in the dark themes, a soft sky in the light ones. */
+.modern-shell[data-tour='on'] .map-layer {
+  background:
+    radial-gradient(1px 1px at 12% 18%, rgba(255,255,255,0.8) 50%, transparent 51%),
+    radial-gradient(1px 1px at 27% 72%, rgba(255,255,255,0.6) 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 41% 33%, rgba(255,255,255,0.9) 50%, transparent 51%),
+    radial-gradient(1px 1px at 58% 84%, rgba(255,255,255,0.5) 50%, transparent 51%),
+    radial-gradient(1px 1px at 66% 12%, rgba(255,255,255,0.7) 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 79% 57%, rgba(255,255,255,0.8) 50%, transparent 51%),
+    radial-gradient(1px 1px at 88% 26%, rgba(255,255,255,0.6) 50%, transparent 51%),
+    radial-gradient(1px 1px at 93% 78%, rgba(255,255,255,0.7) 50%, transparent 51%),
+    radial-gradient(1px 1px at 6% 52%, rgba(255,255,255,0.5) 50%, transparent 51%),
+    radial-gradient(1px 1px at 34% 6%, rgba(255,255,255,0.6) 50%, transparent 51%),
+    radial-gradient(1px 1px at 51% 61%, rgba(255,255,255,0.4) 50%, transparent 51%),
+    radial-gradient(1px 1px at 72% 94%, rgba(255,255,255,0.6) 50%, transparent 51%),
+    radial-gradient(ellipse at 50% 120%, rgba(60, 90, 160, 0.25), transparent 60%),
+    #03050B;
+  background-size: 420px 420px, 420px 420px, 420px 420px, 420px 420px, 420px 420px, 420px 420px, 420px 420px, 420px 420px, 420px 420px, 420px 420px, 420px 420px, 420px 420px, 100% 100%, 100% 100%;
+  animation: tour-drift 240s linear infinite;
+}
+:is([data-theme='command-light'], [data-theme='atlas-day'])[data-tour='on'] .map-layer {
+  background: radial-gradient(ellipse at 50% 40%, #FFFFFF 0%, #E6EBF2 55%, #CFD8E4 100%);
+  animation: none;
+}
+@keyframes tour-drift { to { background-position: 420px 0, 420px 0, 420px 0, 420px 0, 420px 0, 420px 0, 420px 0, 420px 0, 420px 0, 420px 0, 420px 0, 420px 0, 0 0, 0 0; } }
+.tour-caption { animation: tour-caption-in 600ms cubic-bezier(.2,.8,.2,1); }
+@keyframes tour-caption-in { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .modern-shell[data-tour='on'] .map-layer, .tour-caption { animation: none; }
+}
