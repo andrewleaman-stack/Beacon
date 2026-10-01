@@ -1631,15 +1631,17 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
     if (!mapReady || !mapRef.current) return;
     const map = mapRef.current;
     const scale = Math.max(0.8, Math.min(1.4, visualScale || 1));
+    // MapLibre 6 throws when asked for a property the layer type does not have.
     const scalableProps = [
-      { kind: 'paint' as const, prop: 'circle-radius' },
-      { kind: 'layout' as const, prop: 'icon-size' },
-      { kind: 'layout' as const, prop: 'text-size', textScale: 0.75 },
+      { kind: 'paint' as const, prop: 'circle-radius', type: 'circle' },
+      { kind: 'layout' as const, prop: 'icon-size', type: 'symbol' },
+      { kind: 'layout' as const, prop: 'text-size', type: 'symbol', textScale: 0.75 },
     ];
 
     try {
       for (const layer of map.getStyle().layers || []) {
         for (const item of scalableProps) {
+          if (layer.type !== item.type) continue;
           const key = `${layer.id}:${item.kind}:${item.prop}`;
           const getter = (item.kind === 'paint' ? map.getPaintProperty.bind(map) : map.getLayoutProperty.bind(map)) as (id: string, prop: string) => any;
           const setter = (item.kind === 'paint' ? map.setPaintProperty.bind(map) : map.setLayoutProperty.bind(map)) as (id: string, prop: string, value: any) => void;

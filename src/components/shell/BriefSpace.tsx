@@ -6,6 +6,7 @@ import { loadPlaces, type Place } from '@/components/MyPlacesPanel';
 import MyPlacesPanel from '@/components/MyPlacesPanel';
 import LiveAlerts from '@/components/LiveAlerts';
 import { distanceKm } from '@/lib/geo-nearby.mjs';
+import { loadWallState } from './news-wall-state';
 import type { ShellProps, SpaceId } from './types';
 
 type Level = 'clear' | 'watch' | 'advisory' | 'warning';
@@ -101,7 +102,14 @@ export default function BriefSpace(props: Props) {
   }, []);
 
   useEffect(() => {
-    fetch('/api/live-news').then((r) => r.json()).then((d) => setOnAir((d.feeds || []).filter((f: any) => f.embed_allowed !== false).slice(0, 2))).catch(() => {});
+    fetch('/api/live-news').then((r) => r.json()).then((d) => {
+      // Lead with channels from the news wall's current lineup.
+      const w = loadWallState();
+      const order = (w.lineups[w.active]?.ids || []).filter(Boolean) as string[];
+      const playable = (d.feeds || []).filter((f: any) => f.embed_allowed !== false);
+      const rank = (f: any) => { const i = order.indexOf(f.id); return i === -1 ? 99 : i; };
+      setOnAir([...playable].sort((a, b) => rank(a) - rank(b)).slice(0, 2));
+    }).catch(() => {});
   }, []);
 
   const ranked = useMemo(() => {
