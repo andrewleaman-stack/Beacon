@@ -22,6 +22,8 @@ import DashboardViewControls from '@/components/DashboardViewControls';
 import RegionContextSection from '@/components/RegionContextSection';
 import TrackPanel, { type TrackTarget } from '@/components/TrackPanel';
 import MyPlacesPanel from '@/components/MyPlacesPanel';
+import ModernShell from '@/components/shell/ModernShell';
+import { useUiPrefs, useResolvedTheme, useResolvedLayout } from '@/lib/ui-prefs';
 import {
   DEFAULT_DASHBOARD_VIEW_SETTINGS,
   DEFAULT_HOME_LOCATION,
@@ -139,6 +141,9 @@ export default function Dashboard() {
   const [rightDrawerRecon, setRightDrawerRecon] = useState<any[]>([]);
 
   const isMobile = useIsMobile();
+  const { prefs: uiPrefs, update: updateUiPrefs, loaded: uiPrefsLoaded } = useUiPrefs();
+  const uiTheme = useResolvedTheme(uiPrefs);
+  const uiLayout = useResolvedLayout(uiPrefs.layout);
   const startTime = useRef(Date.now());
   const geocodeCache = useRef<Map<string, string>>(new Map());
   const geocodeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -690,6 +695,195 @@ export default function Dashboard() {
   ), [data.commercial_flights, data.private_flights, data.private_jets, data.military_flights]);
 
 
+  // ── Pieces shared by the classic and modern layouts ──
+  const mapElement = (
+        <BeaconMap 
+      data={data} 
+      activeLayers={activeLayers} 
+      projection={mapProjection} 
+      mapStyle={mapStyle === 'satellite' ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}' : 'dark'} 
+      onEntityClick={handleEntityClick} 
+      onMouseCoords={handleMouseCoords} 
+      onRightClick={handleRightClick} 
+      onViewStateChange={setMapView} 
+      flyToLocation={flyToLocation}
+      sweepData={sweepData}
+      scanTargets={scanTargets}
+      demoMode={demoMode}
+      visualScale={viewSettings.iconScale}
+      track={mapTrack}
+    />
+  );
+
+  const liveFeedOverlay = (
+    <>
+      {/* ── LIVE FEED VIEWER OVERLAY ── */}
+      <AnimatePresence>
+        {liveFeedUrl && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.9 }}
+            className="fixed inset-0 z-[500] flex items-center justify-center bg-black/70 backdrop-blur-sm"
+            onClick={() => setLiveFeedUrl(null)}
+          >
+            <motion.div
+              initial={{ y: 20 }}
+              animate={{ y: 0 }}
+              className="w-[90vw] max-w-[900px] flex flex-col relative rounded-xl overflow-hidden border border-[var(--border-primary)] shadow-2xl bg-black"
+              onClick={e => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between px-4 py-2.5 bg-[#111] border-b border-[var(--border-primary)]">
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-[#FF4081] animate-beacon-pulse" />
+                  <span className="text-[12px] font-mono font-bold text-white tracking-wider">{liveFeedName}</span>
+                  <span className="px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 font-mono text-[9px] font-bold">LIVE STREAM</span>
+                  {!liveFeedEmbedAllowed && (
+                    <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 font-mono text-[9px]">EXTERNAL ONLY</span>
+                  )}
+                </div>
+                <div className="flex items-center gap-3">
+                  <a
+                    href={getYouTubeWatchUrl(liveFeedUrl)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-[var(--border-primary)] hover:bg-[var(--gold-primary)] hover:text-black text-white transition-colors text-[11px] font-mono"
+                  >
+                    <span>Open in YouTube</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                  <button onClick={() => setLiveFeedUrl(null)} className="text-white/70 hover:text-white transition-colors p-1">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Body — iframe or external card */}
+              {liveFeedEmbedAllowed ? (
+                <div className="w-full aspect-video relative bg-black">
+                  <iframe
+                    src={liveFeedUrl}
+                    className="w-full h-full absolute inset-0"
+                    allow="autoplay; encrypted-media"
+                    allowFullScreen
+                  />
+                </div>
+              ) : (
+                <div className="w-full aspect-video flex items-center justify-center bg-black/95">
+                  <div className="text-center px-8">
+                    <div className="w-14 h-14 rounded-full bg-[#39FF14]/10 border border-[#39FF14]/20 flex items-center justify-center mx-auto mb-4">
+                      <ExternalLink className="w-6 h-6 text-[#39FF14]" />
+                    </div>
+                    <p className="text-[13px] font-mono font-bold text-white tracking-widest mb-2">EMBED RESTRICTED</p>
+                    <p className="text-[11px] font-mono text-white/50 mb-6 max-w-xs">
+                      {liveFeedName} does not allow third-party embedding. Click below to open the live stream directly.
+                    </p>
+                    <a
+                      href={getYouTubeWatchUrl(liveFeedUrl)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 px-6 py-2.5 rounded border border-[#39FF14]/40 text-[#39FF14] font-mono text-[12px] hover:bg-[#39FF14]/10 transition-colors tracking-wider"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                      OPEN LIVE STREAM
+                    </a>
+                  </div>
+                </div>
+              )}
+
+              {/* Footer — only show for embeddable feeds */}
+              {liveFeedEmbedAllowed && (
+                <div className="bg-[#111]/90 px-4 py-2.5 border-t border-[var(--border-primary)] flex items-center gap-2.5">
+                  <AlertTriangle className="w-4 h-4 text-[var(--gold-primary)] shrink-0" />
+                  <span className="text-[11px] font-mono text-white/70 leading-relaxed">
+                    If you see &ldquo;Video unavailable&rdquo;, use <strong className="text-[var(--gold-primary)]">Open in YouTube</strong> above.
+                  </span>
+                </div>
+              )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+    </>
+  );
+
+  const sharedPanels = (
+    <>
+      {/* ── Camera Viewer ── */}
+      <CameraViewer
+        camera={activeCamera}
+        onClose={() => setActiveCamera(null)}
+        onLocate={(lat, lng) => setFlyToLocation({ lat, lng, ts: Date.now() })}
+      />
+
+      {/* ── Entity Graph Panel ── */}
+      {showEntityGraph && (
+        <EntityGraphPanel
+          entity={entityGraphTarget}
+          onClose={() => setShowEntityGraph(false)}
+        />
+      )}
+
+      {/* ── Right Analyst Drawer ── */}
+      <RightDrawer
+        open={showRightDrawer}
+        onClose={() => setShowRightDrawer(false)}
+        entityRef={rightDrawerEntity}
+        reconResults={rightDrawerRecon}
+        beaconData={data}
+      />
+
+    </>
+  );
+
+  if (!uiPrefsLoaded) {
+    return <main className="fixed inset-0" style={{ background: 'var(--ui-bg)' }} aria-busy="true" />;
+  }
+
+  if (uiLayout !== 'classic') {
+    return (
+      <ModernShell
+        layout={uiLayout}
+        theme={uiTheme}
+        prefs={uiPrefs}
+        updatePrefs={updateUiPrefs}
+        data={data}
+        dataVersion={dataVersion}
+        backendStatus={backendStatus}
+        spaceWeather={spaceWeather}
+        activeLayers={activeLayers}
+        setActiveLayers={setActiveLayers}
+        mapView={mapView}
+        flyTo={(lat, lng, zoom) => setFlyToLocation({ lat, lng, zoom, ts: Date.now() })}
+        mapProjection={mapProjection}
+        setMapProjection={setMapProjection}
+        mapStyle={mapStyle}
+        setMapStyle={setMapStyle}
+        map={<ErrorBoundary name="Map">{mapElement}</ErrorBoundary>}
+        overlays={<div className="legacy-scope">{liveFeedOverlay}{sharedPanels}</div>}
+        regionDossier={regionDossier}
+        dossierLoading={dossierLoading}
+        closeDossier={() => { setRegionDossier(null); setDossierLoading(false); }}
+        openDossier={(lat, lng) => handleRightClick({ lat, lng })}
+        trackTarget={trackTarget}
+        setTrackTarget={setTrackTarget}
+        setMapTrack={setMapTrack}
+        openCamera={(cam) => setActiveCamera(cam)}
+        openLiveFeed={(url, name, embedAllowed = true) => { setLiveFeedUrl(url); setLiveFeedName(name); setLiveFeedEmbedAllowed(embedAllowed); }}
+        openEntityGraph={(target) => { setEntityGraphTarget(target); setShowEntityGraph(true); }}
+        setSweepData={setSweepData}
+        addScanTarget={(target, d) => setScanTargets(prev => [{ id: target, timestamp: Date.now(), ...d }, ...prev.filter(t => t.id !== target)].slice(0, 10))}
+        viewSettings={viewSettings}
+        setViewSettings={setViewSettings}
+        homeLocation={homeLocation}
+        setHomeLocation={setHomeLocation}
+        goHome={goHome}
+      />
+    );
+  }
+
   return (
     <main
       className="fixed inset-0 w-full h-full bg-[var(--bg-void)] overflow-hidden dashboard-shell"
@@ -893,22 +1087,7 @@ export default function Dashboard() {
 
       {/* ── MAP ── */}
       <ErrorBoundary name="Map">
-        <BeaconMap 
-          data={data} 
-          activeLayers={activeLayers} 
-          projection={mapProjection} 
-          mapStyle={mapStyle === 'satellite' ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}' : 'dark'} 
-          onEntityClick={handleEntityClick} 
-          onMouseCoords={handleMouseCoords} 
-          onRightClick={handleRightClick} 
-          onViewStateChange={setMapView} 
-          flyToLocation={flyToLocation}
-          sweepData={sweepData}
-          scanTargets={scanTargets}
-          demoMode={demoMode}
-          visualScale={viewSettings.iconScale}
-          track={mapTrack}
-        />
+        {mapElement}
         <div className="absolute top-20 left-2 md:left-20 z-[270]" hidden={!showPlaces}>
           <MyPlacesPanel
             mapCenter={{ lat: mapView.latitude, lng: mapView.longitude }}
@@ -1166,94 +1345,7 @@ export default function Dashboard() {
         </div>
       </div>}
 
-      {/* ── LIVE FEED VIEWER OVERLAY ── */}
-      <AnimatePresence>
-        {liveFeedUrl && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.9 }}
-            className="fixed inset-0 z-[500] flex items-center justify-center bg-black/70 backdrop-blur-sm"
-            onClick={() => setLiveFeedUrl(null)}
-          >
-            <motion.div
-              initial={{ y: 20 }}
-              animate={{ y: 0 }}
-              className="w-[90vw] max-w-[900px] flex flex-col relative rounded-xl overflow-hidden border border-[var(--border-primary)] shadow-2xl bg-black"
-              onClick={e => e.stopPropagation()}
-            >
-              {/* Header */}
-              <div className="flex items-center justify-between px-4 py-2.5 bg-[#111] border-b border-[var(--border-primary)]">
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-[#FF4081] animate-beacon-pulse" />
-                  <span className="text-[12px] font-mono font-bold text-white tracking-wider">{liveFeedName}</span>
-                  <span className="px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 font-mono text-[9px] font-bold">LIVE STREAM</span>
-                  {!liveFeedEmbedAllowed && (
-                    <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 font-mono text-[9px]">EXTERNAL ONLY</span>
-                  )}
-                </div>
-                <div className="flex items-center gap-3">
-                  <a
-                    href={getYouTubeWatchUrl(liveFeedUrl)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-[var(--border-primary)] hover:bg-[var(--gold-primary)] hover:text-black text-white transition-colors text-[11px] font-mono"
-                  >
-                    <span>Open in YouTube</span>
-                    <ExternalLink className="w-3 h-3" />
-                  </a>
-                  <button onClick={() => setLiveFeedUrl(null)} className="text-white/70 hover:text-white transition-colors p-1">
-                    <X className="w-5 h-5" />
-                  </button>
-                </div>
-              </div>
-
-              {/* Body — iframe or external card */}
-              {liveFeedEmbedAllowed ? (
-                <div className="w-full aspect-video relative bg-black">
-                  <iframe
-                    src={liveFeedUrl}
-                    className="w-full h-full absolute inset-0"
-                    allow="autoplay; encrypted-media"
-                    allowFullScreen
-                  />
-                </div>
-              ) : (
-                <div className="w-full aspect-video flex items-center justify-center bg-black/95">
-                  <div className="text-center px-8">
-                    <div className="w-14 h-14 rounded-full bg-[#39FF14]/10 border border-[#39FF14]/20 flex items-center justify-center mx-auto mb-4">
-                      <ExternalLink className="w-6 h-6 text-[#39FF14]" />
-                    </div>
-                    <p className="text-[13px] font-mono font-bold text-white tracking-widest mb-2">EMBED RESTRICTED</p>
-                    <p className="text-[11px] font-mono text-white/50 mb-6 max-w-xs">
-                      {liveFeedName} does not allow third-party embedding. Click below to open the live stream directly.
-                    </p>
-                    <a
-                      href={getYouTubeWatchUrl(liveFeedUrl)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-2 px-6 py-2.5 rounded border border-[#39FF14]/40 text-[#39FF14] font-mono text-[12px] hover:bg-[#39FF14]/10 transition-colors tracking-wider"
-                    >
-                      <ExternalLink className="w-4 h-4" />
-                      OPEN LIVE STREAM
-                    </a>
-                  </div>
-                </div>
-              )}
-
-              {/* Footer — only show for embeddable feeds */}
-              {liveFeedEmbedAllowed && (
-                <div className="bg-[#111]/90 px-4 py-2.5 border-t border-[var(--border-primary)] flex items-center gap-2.5">
-                  <AlertTriangle className="w-4 h-4 text-[var(--gold-primary)] shrink-0" />
-                  <span className="text-[11px] font-mono text-white/70 leading-relaxed">
-                    If you see &ldquo;Video unavailable&rdquo;, use <strong className="text-[var(--gold-primary)]">Open in YouTube</strong> above.
-                  </span>
-                </div>
-              )}
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {liveFeedOverlay}
 
       {/* ═══ MOBILE UI ═══ */}
       {isMobile && (
@@ -1391,29 +1483,7 @@ export default function Dashboard() {
         </motion.div>
       )}
 
-      {/* ── Camera Viewer ── */}
-      <CameraViewer
-        camera={activeCamera}
-        onClose={() => setActiveCamera(null)}
-        onLocate={(lat, lng) => setFlyToLocation({ lat, lng, ts: Date.now() })}
-      />
-
-      {/* ── Entity Graph Panel ── */}
-      {showEntityGraph && (
-        <EntityGraphPanel
-          entity={entityGraphTarget}
-          onClose={() => setShowEntityGraph(false)}
-        />
-      )}
-
-      {/* ── Right Analyst Drawer ── */}
-      <RightDrawer
-        open={showRightDrawer}
-        onClose={() => setShowRightDrawer(false)}
-        entityRef={rightDrawerEntity}
-        reconResults={rightDrawerRecon}
-        beaconData={data}
-      />
+      {sharedPanels}
 
       {/* ── OVERLAYS ── */}
       <div className="vignette absolute inset-0 pointer-events-none z-[2]" />

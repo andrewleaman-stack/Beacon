@@ -30,9 +30,10 @@ function useLocalTime(timeZone?: string): string {
   }
 }
 
-export default function RegionContextSection({ localSun, indicators }: { localSun?: LocalSun | null; indicators?: WorldBankIndicator[] }) {
+export default function RegionContextSection({ localSun, indicators, modern = false }: { localSun?: LocalSun | null; indicators?: WorldBankIndicator[]; modern?: boolean }) {
   const localTime = useLocalTime(localSun?.timezone);
   if (!localSun && !indicators?.length) return null;
+  if (modern) return <ModernContext localSun={localSun} indicators={indicators} localTime={localTime} />;
 
   return (
     <div className="space-y-3">
@@ -68,6 +69,37 @@ export default function RegionContextSection({ localSun, indicators }: { localSu
             ))}
           </div>
           <div className="text-[7px] text-[var(--text-muted)] mt-1">World Bank Open Data (CC BY 4.0) · Sun times: Open-Meteo.com</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Modern-shell rendering: theme tokens, readable sizes. */
+function ModernContext({ localSun, indicators, localTime }: { localSun?: LocalSun | null; indicators?: WorldBankIndicator[]; localTime: string }) {
+  const label = { fontSize: 13, color: 'var(--ui-text-2)' } as const;
+  const value = { fontSize: 15, fontFamily: 'var(--ui-font-data)' } as const;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {localSun && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12 }}>
+          <div><div style={label}>Local time</div><div style={value}>{localTime}</div><div style={{ ...label, fontSize: 12 }}>{localSun.timezone}</div></div>
+          <div><div style={label}>Sunrise</div><div style={value}>{wallClock(localSun.sunrise)}</div></div>
+          <div><div style={label}>Sunset</div><div style={value}>{wallClock(localSun.sunset)}</div><div style={{ ...label, fontSize: 12 }}>{localSun.isDay ? 'Daylight now' : 'Dark now'}</div></div>
+        </div>
+      )}
+      {!!indicators?.length && (
+        <div>
+          <div style={{ ...label, marginBottom: 6 }}>Development indicators</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '6px 16px' }}>
+            {indicators.map((ind) => (
+              <div key={ind.key} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'baseline' }}>
+                <span style={{ fontSize: 13, color: 'var(--ui-text-2)' }}>{ind.label}</span>
+                <span style={{ fontSize: 14, fontFamily: 'var(--ui-font-data)' }}>{formatIndicator(ind)} <span style={{ fontSize: 12, color: 'var(--ui-text-3)' }}>{ind.year}</span></span>
+              </div>
+            ))}
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--ui-text-3)', marginTop: 6 }}>World Bank Open Data (CC BY 4.0) · Sun times: Open-Meteo.com</div>
         </div>
       )}
     </div>
