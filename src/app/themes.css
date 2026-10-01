@@ -305,3 +305,93 @@
 @media (prefers-reduced-motion: reduce) {
   .modern-shell *, .modern-shell *::before, .modern-shell *::after { transition: none !important; animation: none !important; }
 }
+
+/* ── Legacy panels in the light themes ──
+ * The older panels (analyst, recon, markets, viewers…) were written for a dark UI with
+ * hardcoded colours. In Command Light and Atlas Daylight their variables get light
+ * values, and the hardcoded utility classes they use are remapped by exact class
+ * token. Video areas (bg-black/70 and darker) stay black on purpose. */
+:is([data-theme='command-light'], [data-theme='atlas-day']) .legacy-scope {
+  --bg-void: var(--ui-bg);
+  --bg-primary: var(--ui-bg);
+  --bg-secondary: var(--ui-surface-2);
+  --bg-tertiary: var(--ui-surface-2);
+  --bg-panel: var(--ui-surface);
+  --bg-panel-solid: var(--ui-surface);
+  --text-primary: var(--ui-text);
+  --text-secondary: var(--ui-text-2);
+  --text-muted: var(--ui-text-3);
+  --text-heading: var(--ui-text);
+  --text-gold: var(--ui-accent-text);
+  --text-cyan: #0B6E7F;
+  --gold-primary: var(--ui-accent-text);
+  --gold-light: var(--ui-accent-text);
+  --gold-dim: var(--ui-text-3);
+  --gold-glow: var(--ui-accent-soft);
+  --cyan-primary: #0B6E7F;
+  --cyan-dim: #4D8A94;
+  --cyan-glow: rgba(11, 110, 127, 0.12);
+  --alert-red: #B42318;
+  --alert-orange: #B54708;
+  --alert-green: #067647;
+  --alert-blue: #1D4ED8;
+  --accent-weather: #9E1FB3;
+  --accent-nuclear: #3F7D0B;
+  --border-primary: var(--ui-line);
+  --border-secondary: var(--ui-line);
+  --border-active: var(--ui-line-strong);
+  --border-cyan: rgba(11, 110, 127, 0.3);
+  --hover-accent: var(--ui-accent-soft);
+  --scrollbar-thumb: rgba(20, 26, 42, 0.2);
+  --scrollbar-thumb-hover: rgba(20, 26, 42, 0.35);
+  color: var(--ui-text);
+  color-scheme: light;
+}
+
+/* Text */
+:is([data-theme='command-light'], [data-theme='atlas-day']) .legacy-scope :is(
+  [class~="text-white"], [class~="text-[#E8E6E0]"], [class~="text-[#fff]"], [class~="text-white/90"],
+  [class~="text-white/80"], [class~="text-white/70"], [class~="text-[#F5F0E0]"]) { color: var(--ui-text); }
+:is([data-theme='command-light'], [data-theme='atlas-day']) .legacy-scope :is(
+  [class~="text-white/60"], [class~="text-white/55"], [class~="text-white/50"], [class~="text-[#8A8880]"],
+  [class~="text-[#aaa]"], [class~="text-[#9B978E]"], [class~="text-[#A9A59C]"]) { color: var(--ui-text-2); }
+:is([data-theme='command-light'], [data-theme='atlas-day']) .legacy-scope :is(
+  [class~="text-white/40"], [class~="text-white/30"], [class~="text-[#5C5A54]"], [class~="text-[#85827A]"]) { color: var(--ui-text-3); }
+:is([data-theme='command-light'], [data-theme='atlas-day']) .legacy-scope [class~="hover:text-white"]:hover { color: var(--ui-text); }
+
+/* Neon accents are unreadable on white: darker versions of the same hues. */
+:is([data-theme='command-light'], [data-theme='atlas-day']) .legacy-scope {
+  & [class~="text-[#00E676]"], & [class~="text-[#5FD39A]"] { color: #067647; }
+  & [class~="text-[#00E5FF]"], & [class~="text-[#00BCD4]"], & [class~="text-[#87CEEB]"] { color: #0B6E7F; }
+  & [class~="text-[#FF9500]"], & [class~="text-[#FFD700]"], & [class~="text-[#F0B54A]"] { color: #B54708; }
+  & [class~="text-[#FF3D3D]"], & [class~="text-[#FF1744]"], & [class~="text-[#FF6B5E]"] { color: #B42318; }
+  & [class~="text-[#7E57C2]"] { color: #5B3BA8; }
+  & [class~="text-[#D4AF37]"] { color: var(--ui-accent-text); }
+}
+
+/* Surfaces and lines */
+:is([data-theme='command-light'], [data-theme='atlas-day']) .legacy-scope :is(
+  [class~="bg-[#1A1A18]"], [class~="bg-[#0D0D0C]"], [class~="bg-[#111]"], [class~="bg-[#0a0a09]/95"],
+  [class~="bg-black/40"], [class~="bg-black/30"], [class~="bg-black/20"], [class~="bg-[rgba(0,0,0,0.3)]"]) { background-color: var(--ui-surface-2); }
+:is([data-theme='command-light'], [data-theme='atlas-day']) .legacy-scope :is(
+  [class~="border-white/10"], [class~="border-white/20"], [class~="border-[#2A2A28]"], [class~="border-[#3A3A38]"],
+  [class~="border-[rgba(255,255,255,0.05)]"]) { border-color: var(--ui-line); }
+:is([data-theme='command-light'], [data-theme='atlas-day']) .legacy-scope [class~="hover:bg-white/5"]:hover { background-color: var(--ui-accent-soft); }
+:is([data-theme='command-light'], [data-theme='atlas-day']) .legacy-scope :is(input, textarea, select)::placeholder { color: var(--ui-text-3); }
+
+/* Named Tailwind accents and inline neon colours used by the legacy panels. */
+:is([data-theme='command-light'], [data-theme='atlas-day']) .legacy-scope {
+  & :is([class~="text-red-400"], [class~="text-red-300"], [class~="text-red-200"], [class~="hover:text-red-400"]:hover) { color: #B42318; }
+  & :is([class~="text-orange-400"], [class~="text-yellow-400"]) { color: #B54708; }
+  & [class~="text-green-400"] { color: #067647; }
+  & [style*="color: rgb(0, 229, 255)"] { color: #0B6E7F !important; }
+  & [style*="color: rgb(0, 230, 118)"], & [style*="color: rgb(118, 255, 3)"] { color: #067647 !important; }
+  & [style*="color: rgb(255, 215, 0)"], & [style*="color: rgb(255, 149, 0)"] { color: #B54708 !important; }
+  & [style*="color: rgb(224, 64, 251)"] { color: #9E1FB3 !important; }
+  & [style*="color: rgb(135, 206, 235)"], & [style*="color: rgb(144, 202, 249)"] { color: #1D4ED8 !important; }
+  & :is(.glass-panel, .glass-panel-sm) { box-shadow: var(--ui-shadow); }
+}
+:is([data-theme='command-light'], [data-theme='atlas-day']) .legacy-scope {
+  & [class~="bg-[#111]/90"] { background-color: var(--ui-surface-2); }
+  & [style*="border-color: rgb(0, 0, 0)"] { border-color: var(--ui-line-strong) !important; }
+}

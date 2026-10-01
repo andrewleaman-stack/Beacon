@@ -114,7 +114,7 @@ export default function CameraViewer({ camera, onClose, onLocate }: CameraViewer
       >
         <div className="glass-panel overflow-hidden h-full flex flex-col border-2" style={{ borderColor: '#000000', boxShadow: 'inset 0 0 20px rgba(126, 87, 194, 0.15), 0 0 10px rgba(0,0,0,0.8)' }}>
           {/* Header */}
-          <div className="flex items-center justify-between px-3 md:px-4 py-2 md:py-3 border-b border-black bg-black/80">
+          <div className="flex items-center justify-between px-3 md:px-4 py-2 md:py-3 border-b border-[var(--border-secondary)] bg-[var(--bg-secondary)]">
             <div className="flex items-center gap-2 flex-1 min-w-0">
               <div className="w-2 h-2 rounded-full bg-[#7E57C2] animate-beacon-pulse flex-shrink-0" />
               <Camera className="w-3.5 h-3.5 text-[#7E57C2] flex-shrink-0" />
