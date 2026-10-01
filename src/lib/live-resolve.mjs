@@ -5,10 +5,10 @@
 /**
  * @param {string} html  the HTML of youtube.com/channel/<id>/live
  * @param {string} channelId  the channel we asked for, to reject redirects elsewhere
- * @returns {{ videoId: string | null, live: boolean, embeddable: boolean }}
+ * @returns {{ videoId: string | null, live: boolean, embeddable: boolean, title: string | null }}
  */
 export function parseLivePage(html, channelId) {
-  const none = { videoId: null, live: false, embeddable: false };
+  const none = { videoId: null, live: false, embeddable: false, title: null };
   if (typeof html !== 'string' || !html) return none;
   const canonical = html.match(/<link rel="canonical" href="https:\/\/www\.youtube\.com\/watch\?v=([\w-]{11})"/);
   if (!canonical) return none;
@@ -16,7 +16,14 @@ export function parseLivePage(html, channelId) {
   if (channelId && owner && owner[1] !== channelId) return none;
   const live = /"isLive":true/.test(html) || /"isLiveNow":true/.test(html);
   const embeddable = /"playableInEmbed":true/.test(html);
-  return { videoId: canonical[1], live, embeddable: live && embeddable };
+  const t = html.match(/<meta name="title" content="([^"]*)"/);
+  const title = t ? decodeEntities(t[1]).slice(0, 200) : null;
+  return { videoId: canonical[1], live, embeddable: live && embeddable, title };
+}
+
+/** @param {string} s */
+function decodeEntities(s) {
+  return s.replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;|&#x27;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>');
 }
 
 const HEADERS = {

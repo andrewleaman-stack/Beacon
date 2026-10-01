@@ -9,11 +9,11 @@ const CH = 'UCNye-wNBqNL5ZzHSJj3l8Bg';
 const page = (extra) => `<html><link rel="canonical" href="https://www.youtube.com/watch?v=gCNeDWCI0vo"><script>{"channelId":"${CH}",${extra}}</script></html>`;
 
 test('live, embeddable channel resolves to its current video', () => {
-  assert.deepEqual(parseLivePage(page('"isLive":true,"playableInEmbed":true'), CH), { videoId: 'gCNeDWCI0vo', live: true, embeddable: true });
+  assert.deepEqual(parseLivePage(page('"isLive":true,"playableInEmbed":true'), CH), { videoId: 'gCNeDWCI0vo', live: true, embeddable: true, title: null });
 });
 
 test('live but embedding blocked', () => {
-  assert.deepEqual(parseLivePage(page('"isLive":true,"playableInEmbed":false'), CH), { videoId: 'gCNeDWCI0vo', live: true, embeddable: false });
+  assert.deepEqual(parseLivePage(page('"isLive":true,"playableInEmbed":false'), CH), { videoId: 'gCNeDWCI0vo', live: true, embeddable: false, title: null });
 });
 
 test('a past video is not live and never embeddable', () => {
@@ -23,7 +23,7 @@ test('a past video is not live and never embeddable', () => {
 
 test('offline channel page has no watch canonical', () => {
   const html = '<link rel="canonical" href="https://www.youtube.com/channel/UCNye-wNBqNL5ZzHSJj3l8Bg">"isLive":true';
-  assert.deepEqual(parseLivePage(html, CH), { videoId: null, live: false, embeddable: false });
+  assert.deepEqual(parseLivePage(html, CH), { videoId: null, live: false, embeddable: false, title: null });
 });
 
 test('a page owned by another channel is rejected', () => {
@@ -59,4 +59,9 @@ test('channel catalog is consistent', () => {
     assert.ok(Math.abs(c.lat) <= 90 && Math.abs(c.lng) <= 180, `${c.name} coords`);
   }
   for (const id of DEFAULT_WALL) assert.ok(ids.has(id), `default wall ${id}`);
+});
+
+test('the live title is read and unescaped', () => {
+  const html = page('"isLive":true,"playableInEmbed":true').replace('<script>', '<meta name="title" content="Strikes on Gaza &amp; Lebanon: LIVE"><script>');
+  assert.equal(parseLivePage(html, CH).title, 'Strikes on Gaza & Lebanon: LIVE');
 });

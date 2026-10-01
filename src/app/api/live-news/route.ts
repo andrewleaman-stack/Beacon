@@ -13,7 +13,7 @@ import { resolveChannel, mapLimit } from '@/lib/live-resolve.mjs';
  * embed_allowed: false → off air, or the broadcaster blocks embedding; open on YouTube
  */
 
-type Status = { videoId: string | null; live: boolean; embeddable: boolean; checkedAt: number };
+type Status = { videoId: string | null; live: boolean; embeddable: boolean; title: string | null; checkedAt: number };
 
 const REFRESH_MS = 15 * 60_000;
 const status = new Map<string, Status>();
@@ -47,12 +47,12 @@ function toFeed(c: (typeof LIVE_CHANNELS)[number]) {
     return { ...base, url: `https://www.youtube.com/embed/live_stream?channel=${c.channelId}&autoplay=1&mute=1`, embed_allowed: true, live: null, video_id: null, checked_at: null };
   }
   if (s.live && s.embeddable && s.videoId) {
-    return { ...base, url: `https://www.youtube.com/embed/${s.videoId}?autoplay=1&mute=1`, embed_allowed: true, live: true, video_id: s.videoId, checked_at: new Date(s.checkedAt).toISOString() };
+    return { ...base, url: `https://www.youtube.com/embed/${s.videoId}?autoplay=1&mute=1`, embed_allowed: true, live: true, video_id: s.videoId, live_title: s.title, checked_at: new Date(s.checkedAt).toISOString() };
   }
   return {
     ...base,
     url: s.live && s.videoId ? `https://www.youtube.com/watch?v=${s.videoId}` : `https://www.youtube.com/@${c.handle}/live`,
-    embed_allowed: false, live: s.live, video_id: s.live ? s.videoId : null, checked_at: new Date(s.checkedAt).toISOString(),
+    embed_allowed: false, live: s.live, video_id: s.live ? s.videoId : null, live_title: s.live ? s.title : null, checked_at: new Date(s.checkedAt).toISOString(),
   };
 }
 

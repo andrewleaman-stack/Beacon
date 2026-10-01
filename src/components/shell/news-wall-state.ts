@@ -5,7 +5,8 @@ import { DEFAULT_WALL } from '@/lib/live-channels.mjs';
 
 export type GridId = '2x2' | '3x2' | '3x3';
 export interface Lineup { name: string; ids: (string | null)[] }
-export interface WallState { grid: GridId; lineups: Lineup[]; active: number; audio: number }
+/** `auto`: pick channels from what is happening in the world instead of a saved lineup. */
+export interface WallState { grid: GridId; lineups: Lineup[]; active: number; audio: number; auto: boolean }
 
 export const GRIDS: { id: GridId; cols: number; rows: number; label: string }[] = [
   { id: '2x2', cols: 2, rows: 2, label: '2 × 2' },
@@ -22,7 +23,7 @@ export const STARTER_LINEUPS: Lineup[] = [
 ];
 
 const KEY = 'beacon.newswall.v1';
-export const DEFAULT_WALL_STATE: WallState = { grid: '2x2', lineups: STARTER_LINEUPS, active: 0, audio: 0 };
+export const DEFAULT_WALL_STATE: WallState = { grid: '2x2', lineups: STARTER_LINEUPS, active: 0, audio: 0, auto: true };
 
 export function gridSize(grid: GridId) {
   const g = GRIDS.find((x) => x.id === grid) || GRIDS[0];
@@ -38,9 +39,10 @@ function normalize(raw: any): WallState {
       .map((l: any) => ({ name: l.name.slice(0, 40), ids: l.ids.slice(0, 9).map((id: any) => (typeof id === 'string' ? id : null)) }))
     : [];
   if (!lineups.length) return { ...DEFAULT_WALL_STATE, grid };
+  const auto = raw.auto === true;
   const active = Number.isInteger(raw.active) && raw.active >= 0 && raw.active < lineups.length ? raw.active : 0;
   const audio = Number.isInteger(raw.audio) && raw.audio >= -1 && raw.audio < 9 ? raw.audio : 0;
-  return { grid, lineups, active, audio };
+  return { grid, lineups, active, audio, auto };
 }
 
 export function loadWallState(): WallState {
