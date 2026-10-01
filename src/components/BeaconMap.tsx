@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback, memo } from 'react';
-import maplibregl from 'maplibre-gl';
+import type * as ML from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { trueColorTiles, liveCloudTiles, LIVE_CLOUD_LAYERS, GIBS_ATTRIBUTION } from '@/lib/nasa-imagery.mjs';
 import { lightningTiles, FOREST_ALERT_TILES } from '@/lib/weather-layers.mjs';
@@ -49,6 +49,16 @@ const EMPTY_FC = { type: 'FeatureCollection' as const, features: [] };
 // Popup HTML is built from third-party feed text (headlines, callsigns, place
 // names), so every string property is HTML-escaped before interpolation and
 // URL-like fields must be http(s).
+// MapLibre 6 is loaded at runtime from public/vendor (see scripts/vendor-maplibre.mjs):
+// its worker bootstrap uses `new URL(..., import.meta.url)`, which Turbopack can't bundle.
+let maplibregl: typeof ML;
+let maplibreLoading: Promise<typeof ML> | null = null;
+function loadMaplibre(): Promise<typeof ML> {
+  maplibreLoading ??= import(/* webpackIgnore: true */ /* turbopackIgnore: true */ '/vendor/maplibre-gl/maplibre-gl.mjs' as string)
+    .then((mod: any) => { maplibregl = mod; return mod as typeof ML; });
+  return maplibreLoading;
+}
+
 function escapeHtml(value: string): string {
   return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
@@ -83,14 +93,14 @@ function actionButton(label: string, color: string, action: 'track' | 'nearby', 
 
 function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightClick, onViewStateChange, flyToLocation, projection = 'globe', mapStyle = 'dark', sweepData, scanTargets = [], demoMode = false, visualScale = 1, track = null }: BeaconMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<maplibregl.Map | null>(null);
-  const popupRef = useRef<maplibregl.Popup | null>(null);
+  const mapRef = useRef<ML.Map | null>(null);
+  const popupRef = useRef<ML.Popup | null>(null);
   const [mapReady, setMapReady] = useState(false);
   const prevStyleRef = useRef(mapStyle);
   const baseVisualValuesRef = useRef<Map<string, any>>(new Map());
 
   // Create aircraft icon on canvas (for WebGL symbol layer)
-  const createIcon = useCallback((map: maplibregl.Map, id: string, color: string, size: number) => {
+  const createIcon = useCallback((map: ML.Map, id: string, color: string, size: number) => {
     if (map.hasImage(id)) return;
     const canvas = document.createElement('canvas');
     canvas.width = size; canvas.height = size;
@@ -113,7 +123,7 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
     map.addImage(id, { width: size, height: size, data: new Uint8Array(ctx.getImageData(0, 0, size, size).data) });
   }, []);
 
-  const createDot = useCallback((map: maplibregl.Map, id: string, color: string, size: number) => {
+  const createDot = useCallback((map: ML.Map, id: string, color: string, size: number) => {
     if (map.hasImage(id)) return;
     const canvas = document.createElement('canvas');
     canvas.width = size; canvas.height = size;
@@ -175,11 +185,16 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
-    const map = new maplibregl.Map({
+    let disposed = false;
+    let created: ML.Map | null = null;
+    loadMaplibre().then((ml) => {
+    if (disposed || !containerRef.current) return;
+    const map = new ml.Map({
       container: containerRef.current,
       style: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
       center: [0, 20], zoom: 2.5, minZoom: 1.5, maxZoom: 18,
-      attributionControl: false,
+      // Compact credits: several layers (RainViewer, Open-Meteo, NASA, GFW) require attribution.
+      attributionControl: { compact: true },
       maxPitch: 85,
       transformRequest: (url: string) => {
         // Route all CARTO CDN requests through the internal Next.js proxy API
@@ -1169,7 +1184,9 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
       });
     });
 
-    return () => { map.remove(); mapRef.current = null; };
+    created = map;
+    }).catch((e) => console.error('[BEACON] Failed to load the map library:', e));
+    return () => { disposed = true; created?.remove(); mapRef.current = null; };
   }, []);
 
   // Day/Night
@@ -1559,7 +1576,7 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
       properties: { ...t }
     }));
     
-    const src = map.getSource('scan-targets') as maplibregl.GeoJSONSource;
+    const src = map.getSource('scan-targets') as ML.GeoJSONSource;
     if (src) src.setData({ type: 'FeatureCollection', features });
   }, [scanTargets, mapReady]);
 
@@ -1578,8 +1595,8 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
       for (const layer of map.getStyle().layers || []) {
         for (const item of scalableProps) {
           const key = `${layer.id}:${item.kind}:${item.prop}`;
-          const getter = item.kind === 'paint' ? map.getPaintProperty.bind(map) : map.getLayoutProperty.bind(map);
-          const setter = item.kind === 'paint' ? map.setPaintProperty.bind(map) : map.setLayoutProperty.bind(map);
+          const getter = (item.kind === 'paint' ? map.getPaintProperty.bind(map) : map.getLayoutProperty.bind(map)) as (id: string, prop: string) => any;
+          const setter = (item.kind === 'paint' ? map.setPaintProperty.bind(map) : map.setLayoutProperty.bind(map)) as (id: string, prop: string, value: any) => void;
           let base = baseVisualValuesRef.current.get(key);
           if (base === undefined) {
             base = getter(layer.id, item.prop as any);
