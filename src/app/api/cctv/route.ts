@@ -16,11 +16,14 @@ import { fetchFranceCameras } from './france';
 import { fetchSpainCameras } from './spain';
 import { fetchPolandCameras } from './poland';
 import { fetchJapanCameras } from './japan';
+import { fetchMichiganCameras, fetchFinlandCameras, fetchHongKongCameras, fetchIcelandCameras, fetchNewZealandCameras, cachedCameraList, okFetch } from './open-networks';
+import { parseWsdot, parseCaltrans } from '@/lib/camera-networks.mjs';
 
 /**
  * BEACON — Worldwide CCTV Camera API v2
  * Viewport-aware: pass ?region=xx to load cameras for specific regions
- * Supports: uk, us-east, us-west, us-central, canada, europe, asia
+ * Supports: uk, us-east, us-west, us-central, canada, europe, asia, michigan, finland,
+ *   hong-kong, iceland, new-zealand (and the per-country European sets)
  * Or pass ?lat=x&lng=y&radius=5 for proximity-based loading
  */
 
@@ -45,39 +48,18 @@ async function fetchTfLCameras(): Promise<any[]> {
   } catch { return []; }
 }
 
-// ── US-WEST: WSDOT Washington State (~500) ──
-async function fetchWSDOTCameras(): Promise<any[]> {
-  try {
-    const res = await timedFetch('https://data.wsdot.wa.gov/log/public/cameras.json', { signal: AbortSignal.timeout(10000) });
-    if (!res.ok) return [];
-    const data = await res.json();
-    return (data || []).map((cam: any) => ({
-      id: `wsdot-${cam.CameraID}`, lat: cam.CameraLocation?.Latitude, lng: cam.CameraLocation?.Longitude,
-      name: cam.Title || 'WSDOT Camera', city: 'Washington', country: 'US',
-      feed_url: cam.ImageURL || '', source: 'WSDOT',
-    })).filter((c: any) => c.lat && c.lng && c.feed_url);
-  } catch { return []; }
-}
+// ── US-WEST: WSDOT Washington State (~1,700) and Caltrans districts ──
+// Parsers live in src/lib/camera-networks.mjs; lists are cached for 30 minutes.
+const fetchWSDOTCameras = cachedCameraList('wsdot', async () =>
+  parseWsdot(await (await okFetch('https://data.wsdot.wa.gov/travelcenter/Cameras.json')).json()));
 
-// ── US-WEST: Caltrans California Districts ──
-async function fetchCaltransCameras(): Promise<any[]> {
-  const allCams: any[] = [];
-  for (const dist of ['d03', 'd04', 'd05', 'd06', 'd07', 'd08', 'd10', 'd11', 'd12']) {
-    try {
-      const res = await timedFetch(`https://cwwp2.dot.ca.gov/data/${dist}/cctv/cctvStatus${dist.toUpperCase()}.json`, { signal: AbortSignal.timeout(8000) });
-      if (!res.ok) continue;
-      const data = await res.json();
-      for (const cam of (data?.data || [])) {
-        const lat = parseFloat(cam.location?.latitude);
-        const lng = parseFloat(cam.location?.longitude);
-        const url = cam.cctv?.imageData?.static?.currentImageURL;
-        if (!lat || !lng || !url) continue;
-        allCams.push({ id: `cal-${allCams.length}`, lat, lng, name: cam.location?.locationName || 'Caltrans', city: 'California', country: 'US', feed_url: url, source: 'Caltrans' });
-      }
-    } catch { /* silent */ }
-  }
-  return allCams;
-}
+// Caltrans' per-district feeds are flaky (some districts answer 500 for hours), so each
+// district is fetched separately and a failing one doesn't empty the rest.
+const CALTRANS_DISTRICTS = ['d01', 'd02', 'd03', 'd04', 'd05', 'd06', 'd07', 'd08', 'd09', 'd10', 'd11', 'd12'];
+const fetchCaltransCameras = async () => (await Promise.all(CALTRANS_DISTRICTS.map((d) =>
+  cachedCameraList(`caltrans-${d}`, async () =>
+    parseCaltrans(await (await okFetch(`https://cwwp2.dot.ca.gov/data/${d}/cctv/cctvStatus${d.toUpperCase()}.json`, undefined, 2)).json()))(),
+))).flat();
 
 // ── CANADA: Ottawa, Toronto, Montreal, Quebec ──
 async function fetchCanadaCameras(): Promise<any[]> {
@@ -379,6 +361,11 @@ const REGION_FETCHERS: Record<string, () => Promise<any[]>> = {
   'spain': fetchSpainCameras,
   'poland': fetchPolandCameras,
   'japan': fetchJapanCameras,
+  'michigan': fetchMichiganCameras,
+  'finland': fetchFinlandCameras,
+  'hong-kong': fetchHongKongCameras,
+  'iceland': fetchIcelandCameras,
+  'new-zealand': fetchNewZealandCameras,
 };
 
 // Determine which regions to fetch based on viewport bounds
@@ -439,6 +426,12 @@ function getRegionsForBounds(lat: number, lng: number, radius: number): string[]
   if ((lat > -10 && lat < 60 && lng > 60 && lng < 150)) regions.push('asia');
   // Australia explicitly
   if (lat > -45 && lat < -10 && lng > 110 && lng < 155) regions.push('asia');
+
+  if (lat > 41.5 && lat < 48.5 && lng > -90.5 && lng < -82) regions.push('michigan');
+  if (lat > 59 && lat < 70.5 && lng > 19 && lng < 32) regions.push('finland');
+  if (lat > 22 && lat < 22.6 && lng > 113.8 && lng < 114.5) regions.push('hong-kong');
+  if (lat > 63 && lat < 67 && lng > -25 && lng < -13) regions.push('iceland');
+  if (lat > -48 && lat < -34 && lng > 165 && lng < 179) regions.push('new-zealand');
 
   return regions.length > 0 ? regions : ['uk', 'us-east']; // Default fallback
 }

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { snapshotUrl } from '@/lib/snapshot-url';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, ExternalLink, RefreshCw, MapPin, Camera, Maximize2 } from 'lucide-react';
 import Hls from 'hls.js';
@@ -21,7 +22,10 @@ export default function CameraViewer({ camera, onClose, onLocate }: CameraViewer
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
 
-  const streamType = camera?.stream_type || 'jpg';
+  // When a live stream fails and the camera also has a snapshot, show the snapshot instead.
+  const [streamFailedFor, setStreamFailedFor] = useState<any>(null);
+  const streamFailed = streamFailedFor === camera && Boolean(camera?.feed_url);
+  const streamType = streamFailed ? 'jpg' : (camera?.stream_type || 'jpg');
   const externalFeedUrl = camera?.external_url || camera?.feed_url;
   const externalOnly = Boolean(camera?.external_url && !camera?.feed_url && !camera?.stream_url);
 
@@ -53,10 +57,16 @@ export default function CameraViewer({ camera, onClose, onLocate }: CameraViewer
           videoRef.current?.play().catch(() => {});
         });
         hls.on(Hls.Events.ERROR, (event, data) => {
-          if (data.fatal) setError(true);
+          if (!data.fatal) return;
+          if (camera.feed_url) setStreamFailedFor(camera);
+          else setError(true);
         });
       } else if (videoRef.current?.canPlayType('application/vnd.apple.mpegurl')) {
         videoRef.current.src = camera.stream_url;
+        videoRef.current.addEventListener('error', () => {
+          if (camera.feed_url) setStreamFailedFor(camera);
+          else setError(true);
+        }, { once: true });
         videoRef.current.addEventListener('loadedmetadata', () => {
           setLoading(false);
           videoRef.current?.play().catch(() => {});
@@ -72,7 +82,7 @@ export default function CameraViewer({ camera, onClose, onLocate }: CameraViewer
 
     // JPG fallback
     if (camera.feed_url) {
-      const url = camera.feed_url.includes('?') ? `${camera.feed_url}&_t=${Date.now()}` : `${camera.feed_url}?_t=${Date.now()}`;
+      const url = snapshotUrl(camera.feed_url, Date.now());
       setImageUrl(url);
     } else {
       setError(true);

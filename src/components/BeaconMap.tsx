@@ -1663,7 +1663,13 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
   // Fly-to
   useEffect(() => {
     if (!mapReady || !mapRef.current || !flyToLocation) return;
-    mapRef.current.flyTo({ center: [flyToLocation.lng, flyToLocation.lat], zoom: flyToLocation.zoom ?? 8, duration: 2000 });
+    const map = mapRef.current;
+    // Start a frame later: on first load the projection effect's easeTo (pitch) would
+    // otherwise cancel this flight, and shared links never reached their location.
+    const raf = requestAnimationFrame(() => {
+      map.flyTo({ center: [flyToLocation.lng, flyToLocation.lat], zoom: flyToLocation.zoom ?? 8, duration: 2000 });
+    });
+    return () => cancelAnimationFrame(raf);
   }, [mapReady, flyToLocation]);
 
   // Dynamic projection switching (lightweight — no terrain DEM)
