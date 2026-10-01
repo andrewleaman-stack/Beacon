@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import WebSocket from 'ws';
 import { buildAisSubscription, normalizeAisStreamMessage, parseAisBoundingBoxes } from '@/lib/aisstream.mjs';
+import { chokepointStatus } from './chokepoint-status';
 
 /**
  * BEACON — Maritime Intelligence
@@ -67,17 +68,19 @@ const PORTS = [
   { name: 'Mumbai Naval', country: 'IN', lat: 18.93, lng: 72.84, type: 'naval', fleet: 'Indian Navy Western Command' },
 ];
 
+// Risk is not stored here: it is assessed live from PortWatch transits and security
+// reports (see chokepoint-status.ts). A fixed label once made 'HORMUZ HIGH' fire forever.
 const CHOKEPOINTS = [
-  { name: 'Strait of Hormuz', lat: 26.57, lng: 56.25, traffic: '21M bpd oil', risk: 'HIGH' },
-  { name: 'Strait of Malacca', lat: 2.50, lng: 101.50, traffic: '16M bpd oil', risk: 'MODERATE' },
-  { name: 'Suez Canal', lat: 30.43, lng: 32.34, traffic: '12% world trade', risk: 'ELEVATED' },
-  { name: 'Bab el-Mandeb', lat: 12.58, lng: 43.33, traffic: '6.2M bpd oil', risk: 'CRITICAL' },
-  { name: 'Panama Canal', lat: 9.08, lng: -79.68, traffic: '5% world trade', risk: 'LOW' },
-  { name: 'Turkish Straits', lat: 41.12, lng: 29.07, traffic: '3M bpd oil', risk: 'MODERATE' },
-  { name: 'Danish Straits', lat: 55.70, lng: 12.60, traffic: '3.2M bpd oil', risk: 'LOW' },
-  { name: 'Cape of Good Hope', lat: -34.36, lng: 18.47, traffic: 'Alt route Suez', risk: 'LOW' },
-  { name: 'Taiwan Strait', lat: 24.00, lng: 119.00, traffic: '88% large ships', risk: 'ELEVATED' },
-  { name: 'Lombok Strait', lat: -8.47, lng: 115.72, traffic: 'Alt Malacca', risk: 'LOW' },
+  { name: 'Strait of Hormuz', lat: 26.57, lng: 56.25, traffic: '21M bpd oil' },
+  { name: 'Strait of Malacca', lat: 2.50, lng: 101.50, traffic: '16M bpd oil' },
+  { name: 'Suez Canal', lat: 30.43, lng: 32.34, traffic: '12% world trade' },
+  { name: 'Bab el-Mandeb', lat: 12.58, lng: 43.33, traffic: '6.2M bpd oil' },
+  { name: 'Panama Canal', lat: 9.08, lng: -79.68, traffic: '5% world trade' },
+  { name: 'Turkish Straits', lat: 41.12, lng: 29.07, traffic: '3M bpd oil' },
+  { name: 'Danish Straits', lat: 55.70, lng: 12.60, traffic: '3.2M bpd oil' },
+  { name: 'Cape of Good Hope', lat: -34.36, lng: 18.47, traffic: 'Alt route Suez' },
+  { name: 'Taiwan Strait', lat: 24.00, lng: 119.00, traffic: '88% large ships' },
+  { name: 'Lombok Strait', lat: -8.47, lng: 115.72, traffic: 'Alt Malacca' },
 ];
 
 // --- Global AIS Stream Client (In-Memory Cache) ---
@@ -158,7 +161,8 @@ async function fetchVesselApiFallback() {
   // Mock data removed per user request. We only rely on real live stream data.
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  const statusPromise = chokepointStatus(new URL(request.url).origin);
   // Trigger Hybrid Fallback
   await fetchVesselApiFallback();
 
@@ -214,25 +218,23 @@ export async function GET() {
     };
   });
 
+  const status = await statusPromise;
   const dynamicChokepoints = CHOKEPOINTS.map(choke => {
     let nearbyCount = 0;
     for (let i = 0; i < ships.length; i++) {
       if (getDistanceKm(choke.lat, choke.lng, ships[i].lat, ships[i].lng) < 100) nearbyCount++;
     }
-    
-    // Dynamically adjust risk based on live ship concentration
-    let dynamicRisk = choke.risk;
-    if (nearbyCount > 50) dynamicRisk = 'CRITICAL';
-    else if (nearbyCount > 20 && dynamicRisk !== 'CRITICAL') dynamicRisk = 'HIGH';
-    else if (nearbyCount > 5 && dynamicRisk === 'LOW') dynamicRisk = 'ELEVATED';
-
+    // Ships near a chokepoint are normal traffic, not risk; the count is shown for context only.
+    const live = status.get(choke.name);
     return {
       ...choke,
       traffic: `${choke.traffic} | LIVE SHIPS: ${nearbyCount}`,
-      risk: dynamicRisk
+      vessels_nearby: nearbyCount,
+      risk: live?.risk ?? 'UNKNOWN',
+      risk_evidence: live?.evidence ?? [],
+      security_reports: live?.reports ?? [],
     };
   });
-
   return NextResponse.json({
     ports: dynamicPorts,
     chokepoints: dynamicChokepoints,
