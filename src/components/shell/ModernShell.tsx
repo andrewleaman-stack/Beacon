@@ -10,6 +10,7 @@ import InvestigateSpace from './InvestigateSpace';
 import SettingsSheet from './SettingsSheet';
 import WallMode from './WallMode';
 import MapSearch, { type SearchHit } from './MapSearch';
+import { TourOverlay, TOUR_COLORS, useTourStops } from './GlobeTour';
 import { MAP_PRESETS, applyPreset } from '@/lib/layer-catalog';
 import type { ShellProps, SpaceId } from './types';
 
@@ -46,7 +47,34 @@ export default function ModernShell(props: ShellProps) {
     }
   }, [setActiveLayers]);
 
+  // ── Globe tour: on in wall mode, or when started from the map ──
+  const [tourWanted, setTourWanted] = useState(false);
+  const touring = layout === 'wall' || tourWanted;
+  const tourStops = useTourStops(touring, props.data);
+  const tourColor = TOUR_COLORS[theme];
+  const manualPause = useRef(false);
+  const { setTour, tour, tourIndex } = props;
+  useEffect(() => {
+    if (!touring) { setTour(null); return; }
+    if (!tourStops.length) return;
+    setTour((t) => ({ stops: tourStops, paused: t?.paused ?? false, color: tourColor, jump: t?.jump }));
+  }, [touring, tourStops, tourColor, setTour]);
+  // Touching the map pauses the tour; it picks up again after 20 s unless paused on purpose.
+  useEffect(() => {
+    if (!tour?.paused || manualPause.current) return;
+    const t = setTimeout(() => setTour((x) => (x ? { ...x, paused: false } : x)), 20_000);
+    return () => clearTimeout(t);
+  }, [tour?.paused, setTour]);
+  const stepTour = useCallback((d: number) => {
+    manualPause.current = false;
+    setTour((t) => (t && t.stops.length ? { ...t, paused: false, jump: { index: (tourIndex + d + t.stops.length) % t.stops.length, ts: Date.now() } } : t));
+  }, [setTour, tourIndex]);
+  const togglePause = useCallback(() => {
+    setTour((t) => { if (!t) return t; manualPause.current = !t.paused; return { ...t, paused: !t.paused }; });
+  }, [setTour]);
+
   const goSpace = useCallback((s: SpaceId) => {
+    if (s !== 'map') setTourWanted(false);
     setSpace(s);
     try { window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#${s}`); } catch { /* ignore */ }
   }, []);
@@ -65,13 +93,20 @@ export default function ModernShell(props: ShellProps) {
         if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setShowSearch(true); }
         return;
       }
+      if (tourWanted) {
+        if (e.key === ' ') { e.preventDefault(); togglePause(); return; }
+        if (e.key === 'ArrowRight') { stepTour(1); return; }
+        if (e.key === 'ArrowLeft') { stepTour(-1); return; }
+        if (e.key === 'Escape') { setTourWanted(false); return; }
+      }
+      if (e.key.toLowerCase() === 't' && layout !== 'wall') { if (!tourWanted) goSpace('map'); setTourWanted((v) => !v); return; }
       if (SPACE_KEYS[e.key]) goSpace(SPACE_KEYS[e.key]);
       if (e.key === '/') { e.preventDefault(); setShowSearch(true); }
       if (e.key === 'Escape') { setShowSearch(false); setShowSettings(false); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [goSpace]);
+  }, [goSpace, tourWanted, togglePause, stepTour, layout]);
 
   const pickSearch = (hit: SearchHit) => {
     setShowSearch(false);
@@ -87,8 +122,8 @@ export default function ModernShell(props: ShellProps) {
 
   if (layout === 'wall') {
     return (
-      <div className="modern-shell fixed overflow-hidden" data-theme={theme} data-layout="wall" style={{ inset: 0 }}>
-        <div className="absolute" style={{ left: 0, top: 0, bottom: 0, right: 'min(38vw, 720px)' }}>{props.map}</div>
+      <div className="modern-shell fixed overflow-hidden" data-theme={theme} data-layout="wall" data-tour="on" style={{ inset: 0 }}>
+        <div className="absolute map-layer" style={{ left: 0, top: 0, bottom: 0, right: 'min(38vw, 720px)' }}>{props.map}</div>
         <WallMode {...props} onSettings={() => setShowSettings(true)} />
         {showSettings && <SettingsSheet {...props} onClose={() => setShowSettings(false)} />}
         {props.overlays}
@@ -97,17 +132,20 @@ export default function ModernShell(props: ShellProps) {
   }
 
   return (
-    <div className="modern-shell fixed overflow-hidden" data-theme={theme} data-layout={layout} style={{ inset: 0, display: 'flex', flexDirection: isTabs ? 'column' : 'row' }}>
+    <div className="modern-shell fixed overflow-hidden" data-theme={theme} data-layout={layout} data-tour={tourWanted ? 'on' : undefined} style={{ inset: 0, display: 'flex', flexDirection: isTabs ? 'column' : 'row' }}>
       {!isTabs && <SidebarNav space={space} onSpace={goSpace} onSearch={() => setShowSearch(true)} onSettings={() => setShowSettings(true)} sourcesLive={sources} />}
 
       <div className="relative" style={{ flexGrow: 1, minWidth: 0, minHeight: 0 }}>
         {/* The map stays mounted under every space so switching never reloads it. */}
-        <div className="absolute" style={{ inset: 0 }}>{props.map}</div>
-        {space === 'map' && <MapSpace {...props} />}
+        <div className="absolute map-layer" style={{ inset: 0 }}>{props.map}</div>
+        {space === 'map' && !tourWanted && <MapSpace {...props} onStartTour={() => { manualPause.current = false; setTourWanted(true); }} />}
+        {space === 'map' && tourWanted && (
+          <TourOverlay tour={tour} index={tourIndex} compact={isTabs} onPrev={() => stepTour(-1)} onNext={() => stepTour(1)} onTogglePause={togglePause} onExit={() => setTourWanted(false)} />
+        )}
         {space === 'brief' && <BriefSpace {...spaceProps} />}
         {space === 'watch' && <WatchSpace {...props} />}
         {space === 'investigate' && <InvestigateSpace {...spaceProps} />}
-        {isTabs && (
+        {isTabs && !(space === 'map' && tourWanted) && (
           <div className="absolute flex gap-2" style={{ right: 12, top: space === 'map' ? 'auto' : 12, bottom: space === 'map' ? (floatingTabs ? 96 : 12) : 'auto', zIndex: 45 }}>
             {space !== 'map' && (
               <button onClick={() => setShowSearch(true)} aria-label="Search" className="ui-btn flex items-center justify-center" style={{ background: 'var(--ui-raised)', width: 44, padding: 0 }}><Search size={20} aria-hidden="true" /></button>

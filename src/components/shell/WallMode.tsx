@@ -1,21 +1,18 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Settings } from 'lucide-react';
 import { loadPlaces, type Place } from '@/components/MyPlacesPanel';
 import type { ShellProps } from './types';
 
-const SEV_RANK: Record<string, number> = { critical: 4, high: 3, elevated: 2, low: 0 };
-const SEV_WORD: Record<string, string> = { critical: 'CRITICAL', high: 'HIGH', elevated: 'WATCH', low: 'LOW' };
+const SEV_WORD: Record<string, string> = { critical: 'CRITICAL', high: 'HIGH', elevated: 'WATCH', advisory: 'ADVISORY', low: 'LOW' };
 
 /** Ambient wall / TV display: readable from across a room, no interaction needed. */
 export default function WallMode(props: ShellProps & { onSettings: () => void }) {
   const [now, setNow] = useState(() => new Date());
   const [places, setPlaces] = useState<Place[]>([]);
   const [watch, setWatch] = useState<Record<string, any>>({});
-  const [situations, setSituations] = useState<any[]>([]);
   const [health, setHealth] = useState<{ healthy: number; total: number } | null>(null);
-  const [idx, setIdx] = useState(0);
   const [showControls, setShowControls] = useState(false);
 
   useEffect(() => { const iv = setInterval(() => setNow(new Date()), 15_000); return () => clearInterval(iv); }, []);
@@ -25,8 +22,8 @@ export default function WallMode(props: ShellProps & { onSettings: () => void })
     setPlaces(list);
     const load = async () => {
       try {
-        const [s, h] = await Promise.all([fetch('/api/situations').then((r) => r.json()), fetch('/api/feed-health').then((r) => r.json())]);
-        setSituations(Array.isArray(s?.situations) ? s.situations : []);
+        // Stories come from the globe tour (ModernShell runs it in wall mode).
+        const h = await fetch('/api/feed-health').then((r) => r.json());
         if (h?.summary) setHealth({ healthy: h.summary.healthy, total: h.summary.totalFeeds });
       } catch { /* keep last */ }
       for (const p of list) {
@@ -41,26 +38,8 @@ export default function WallMode(props: ShellProps & { onSettings: () => void })
     return () => clearInterval(iv);
   }, []);
 
-  const top = useMemo(() => [...situations]
-    .sort((a, b) => (SEV_RANK[b.topSeverity] ?? 0) - (SEV_RANK[a.topSeverity] ?? 0) || (b.score || 0) - (a.score || 0))
-    .slice(0, 5)
-    .map((s) => {
-      const ev = [...(s.events || [])].sort((a: any, b: any) => (SEV_RANK[b.severity] ?? 0) - (SEV_RANK[a.severity] ?? 0))[0];
-      return { ...s, headline: ev?.title || s.title };
-    }), [situations]);
-
-  useEffect(() => {
-    if (top.length < 2) return;
-    const iv = setInterval(() => setIdx((i) => (i + 1) % top.length), 20_000);
-    return () => clearInterval(iv);
-  }, [top.length]);
-
-  useEffect(() => {
-    const story = top[idx % Math.max(1, top.length)];
-    if (story?.centroid) props.flyTo(story.centroid.lat, story.centroid.lng, 3.5);
-  }, [idx, top.length]);
-
-  const story = top[idx % Math.max(1, top.length)];
+  const stops = props.tour?.stops || [];
+  const story = stops.length ? stops[props.tourIndex % stops.length] : null;
 
   return (
     <div className="absolute" style={{ inset: 0, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) min(38vw, 720px)' }}
@@ -103,11 +82,11 @@ export default function WallMode(props: ShellProps & { onSettings: () => void })
         {story && (
           <section aria-label="Now" className="ui-card flex flex-col gap-3.5" style={{ padding: 28 }}>
             <div className="flex items-center justify-between gap-3">
-              <span className="ui-sev" data-sev={story.topSeverity} style={{ fontSize: 22, padding: '6px 12px' }}>{SEV_WORD[story.topSeverity] || String(story.topSeverity).toUpperCase()}</span>
-              <span style={{ fontSize: 22, color: 'var(--ui-text-2)' }}>{(idx % top.length) + 1} of {top.length}</span>
+              <span className="ui-sev" data-sev={story.severity === 'elevated' ? 'advisory' : story.severity} style={{ fontSize: 22, padding: '6px 12px' }}>{SEV_WORD[story.severity || ''] || 'NOW'}</span>
+              <span style={{ fontSize: 22, color: 'var(--ui-text-2)' }}>{(props.tourIndex % stops.length) + 1} of {stops.length}</span>
             </div>
-            <div className="ui-heading" style={{ fontSize: 42, fontWeight: 700, lineHeight: 1.12, textTransform: 'none' }}>{story.headline}</div>
-            <div style={{ fontSize: 26, color: 'var(--ui-text-2)' }}>{story.eventCount} reports · {(story.sources || []).join(', ')}</div>
+            <div key={story.label} className="ui-heading tour-caption" style={{ fontSize: 42, fontWeight: 700, lineHeight: 1.12, textTransform: 'none' }}>{story.label}</div>
+            {story.detail && <div style={{ fontSize: 26, color: 'var(--ui-text-2)' }}>{story.detail}</div>}
           </section>
         )}
 

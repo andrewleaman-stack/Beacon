@@ -32,6 +32,7 @@ import {
 } from '@/lib/dashboard-settings.mjs';
 
 const BeaconMap = dynamic(() => import('@/components/BeaconMap'), { ssr: false });
+import type { GlobeTour } from '@/components/BeaconMap';
 const LayerPanel = dynamic(() => import('@/components/LayerPanel'));
 const CameraViewer = dynamic(() => import('@/components/CameraViewer'));
 const OsintPanel = dynamic(() => import('@/components/OsintPanel'));
@@ -106,6 +107,9 @@ export default function Dashboard() {
   const [backendStatus, setBackendStatus] = useState<'connecting' | 'connected' | 'error'>('connecting');
   const [mapView, setMapView] = useState({ zoom: 2.5, latitude: 20, longitude: 0 });
   const [flyToLocation, setFlyToLocation] = useState<{ lat: number; lng: number; zoom?: number; ts: number } | null>(null);
+  // Globe tour (modern shell only): stops, pause state and the stop now on screen.
+  const [globeTour, setGlobeTour] = useState<GlobeTour | null>(null);
+  const [tourIndex, setTourIndex] = useState(0);
   const [globalStats, setGlobalStats] = useState<any>(null);
   const mouseCoordsRef = useRef<{ lat: number; lng: number } | null>(null);
   const coordsDisplayRef = useRef<HTMLDivElement>(null);
@@ -711,6 +715,9 @@ export default function Dashboard() {
       onViewStateChange={setMapView} 
       flyToLocation={flyToLocation}
       basemap={uiLayout === 'classic' ? 'dark' : uiTheme === 'command-light' ? 'positron' : uiTheme === 'atlas-day' ? 'voyager' : 'dark'}
+      tour={uiLayout === 'classic' ? null : globeTour}
+      onTourStop={setTourIndex}
+      onTourInterrupt={() => setGlobeTour(t => (t && !t.paused ? { ...t, paused: true } : t))}
       sweepData={sweepData}
       scanTargets={scanTargets}
       demoMode={demoMode}
@@ -877,6 +884,9 @@ export default function Dashboard() {
         openCamera={(cam) => setActiveCamera(cam)}
         openLiveFeed={(url, name, embedAllowed = true) => { setLiveFeedUrl(url); setLiveFeedName(name); setLiveFeedEmbedAllowed(embedAllowed); }}
         openEntityGraph={(target) => { setEntityGraphTarget(target); setShowEntityGraph(true); }}
+        tour={globeTour}
+        setTour={setGlobeTour}
+        tourIndex={tourIndex}
         setSweepData={setSweepData}
         addScanTarget={(target, d) => setScanTargets(prev => [{ id: target, timestamp: Date.now(), ...d }, ...prev.filter(t => t.id !== target)].slice(0, 10))}
         viewSettings={viewSettings}

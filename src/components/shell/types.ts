@@ -1,3 +1,4 @@
+import type { GlobeTour } from '@/components/BeaconMap';
 import type { Dispatch, ReactNode, SetStateAction } from 'react';
 import type { ResolvedLayout, ThemeId, UiPrefs } from '@/lib/ui-prefs';
 import type { TrackTarget } from '@/components/TrackPanel';
@@ -46,6 +47,10 @@ export interface ShellProps {
   openEntityGraph: (target: { type: string; id: string; label?: string; properties?: Record<string, any> }) => void;
   setSweepData: (d: any) => void;
   addScanTarget: (target: string, d: any) => void;
+  /** Rotating globe tour; null when off. */
+  tour: GlobeTour | null;
+  setTour: (t: GlobeTour | null | ((prev: GlobeTour | null) => GlobeTour | null)) => void;
+  tourIndex: number;
 
   viewSettings: any;
   setViewSettings: Dispatch<SetStateAction<any>>;
