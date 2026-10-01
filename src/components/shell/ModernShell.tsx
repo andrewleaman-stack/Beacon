@@ -37,7 +37,9 @@ export default function ModernShell(props: ShellProps) {
   useEffect(() => {
     if (started.current) return;
     started.current = true;
-    setSpace(initialSpace());
+    const first = initialSpace();
+    setSpace(first);
+    try { window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#${first}`); } catch { /* ignore */ }
     if (!new URLSearchParams(window.location.search).has('layers')) {
       const overview = MAP_PRESETS.find((p) => p.id === 'overview')!;
       setActiveLayers((prev: any) => applyPreset(prev, overview));
