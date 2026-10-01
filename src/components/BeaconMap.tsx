@@ -669,6 +669,19 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
       }
     });
     map.on('contextmenu', e => { e.preventDefault(); onRightClick?.({ lat: e.lngLat.lat, lng: e.lngLat.lng }); });
+    // Touch screens have no right-click: a 600 ms press that doesn't move opens the same place details.
+    let pressTimer: ReturnType<typeof setTimeout> | null = null;
+    const cancelPress = () => { if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; } };
+    map.on('touchstart', e => {
+      cancelPress();
+      if ((e.originalEvent as TouchEvent).touches.length !== 1) return;
+      const at = e.lngLat;
+      pressTimer = setTimeout(() => { pressTimer = null; onRightClick?.({ lat: at.lat, lng: at.lng }); }, 600);
+    });
+    map.on('touchend', cancelPress);
+    map.on('touchcancel', cancelPress);
+    map.on('touchmove', cancelPress);
+    map.on('movestart', cancelPress);
     map.on('moveend', () => { const c = map.getCenter(); onViewStateChange?.({ zoom: map.getZoom(), latitude: c.lat, longitude: c.lng }); });
 
     // ── POPUP HELPER ──

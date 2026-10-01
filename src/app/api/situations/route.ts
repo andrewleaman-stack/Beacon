@@ -13,7 +13,11 @@ interface FeedSource {
   sev: (item: any) => Severity;
   minSeverity?: Severity;
   timeoutMs?: number;
+  /** Builds a readable headline when the feed's own title field is missing or vague. */
+  title?: (item: any) => string;
 }
+
+const cap = (v: any) => { const s = String(v || ''); return s ? s[0].toUpperCase() + s.slice(1) : ''; };
 
 const SEV_RANK: Severity[] = ['low', 'elevated', 'high', 'critical'];
 
@@ -22,6 +26,7 @@ const SEV_RANK: Severity[] = ['low', 'elevated', 'high', 'critical'];
 // meaningful. Severity heuristics are deterministic and tunable.
 const FEED_SOURCES: FeedSource[] = [
   { path: '/api/earthquakes', key: 'earthquakes', source: 'USGS Quakes', type: 'seismic', minSeverity: 'elevated',
+    title: (e) => `M${Number(e.magnitude).toFixed(1)} earthquake — ${e.place || 'unknown location'}`,
     sev: (e) => (e.magnitude >= 6 ? 'critical' : e.magnitude >= 5 ? 'high' : e.magnitude >= 4 ? 'elevated' : 'low') },
   { path: '/api/conflict-events', key: 'events', source: 'Conflict', type: 'conflict', timeoutMs: 15000,
     sev: (e) => (SEV_RANK.includes(e.severity) ? e.severity : 'elevated') },
@@ -29,10 +34,13 @@ const FEED_SOURCES: FeedSource[] = [
     sev: (e) => (e.active ? 'high' : 'elevated') },
   { path: '/api/nws-alerts', key: 'alerts', source: 'NWS Alerts', type: 'weather',
     sev: (e) => (/extreme/i.test(String(e.severity)) ? 'critical' : /severe/i.test(String(e.severity)) ? 'high' : 'elevated') },
-  { path: '/api/volcano-alerts', key: 'alerts', source: 'Volcano', type: 'geo', timeoutMs: 8000, sev: () => 'high' },
+  { path: '/api/volcano-alerts', key: 'alerts', source: 'Volcano', type: 'geo', timeoutMs: 8000, sev: () => 'high',
+    title: (v) => `Volcano ${String(v.alertLevel || 'alert').toLowerCase()} — ${v.name || 'unnamed volcano'}` },
   { path: '/api/tsunami', key: 'alerts', source: 'Tsunami', type: 'geo', timeoutMs: 8000, sev: () => 'critical' },
-  { path: '/api/storm-reports', key: 'reports', source: 'Storm Reports', type: 'weather', timeoutMs: 8000, sev: () => 'elevated' },
-  { path: '/api/fires', key: 'fires', source: 'FIRMS Fires', type: 'fire', sev: () => 'elevated' },
+  { path: '/api/storm-reports', key: 'reports', source: 'Storm Reports', type: 'weather', timeoutMs: 8000, sev: () => 'elevated',
+    title: (r) => `${cap(r.type) || 'Storm'} report — ${[r.location, r.state].filter(Boolean).join(', ') || 'location unknown'}` },
+  { path: '/api/fires', key: 'fires', source: 'FIRMS Fires', type: 'fire', sev: () => 'elevated',
+    title: () => 'Satellite fire detection' },
   { path: '/api/fema-disasters', key: 'disasters', source: 'FEMA', type: 'hazard', timeoutMs: 8000, sev: () => 'elevated' },
   { path: '/api/gdelt', key: 'events', source: 'GDELT', type: 'geopolitical', timeoutMs: 12000, sev: () => 'elevated' },
   { path: '/api/wiki-surges', key: 'surges', source: 'Wikipedia surge', type: 'signal', timeoutMs: 10000,
@@ -83,7 +91,7 @@ async function fetchFeedEvents(origin: string, cfg: FeedSource) {
         id: `${cfg.source}-${item.id ?? item.event_id ?? `${coord.lat},${coord.lng}`}`,
         source: cfg.source,
         type: cfg.type,
-        title: pickTitle(item),
+        title: cfg.title ? cfg.title(item) : pickTitle(item),
         lat: coord.lat,
         lng: coord.lng,
         time: pickTime(item),

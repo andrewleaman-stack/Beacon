@@ -101,6 +101,8 @@ interface ChatMessage {
 
 interface AiAnalystProps {
   data: DashboardData;
+  /** Render inline and always open (modern shell's Investigate space). */
+  embedded?: boolean;
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -187,8 +189,10 @@ function renderMarkdown(text: string): string {
    Component
    ───────────────────────────────────────────────────────────── */
 
-export default function AiAnalyst({ data }: AiAnalystProps) {
-  const [isOpen, setIsOpen] = useState(false);
+export default function AiAnalyst({ data, embedded = false }: AiAnalystProps) {
+  // Embedded (modern shell): always open, laid out inline instead of floating.
+  const [isOpenState, setIsOpen] = useState(embedded);
+  const isOpen = embedded || isOpenState;
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -396,20 +400,20 @@ export default function AiAnalyst({ data }: AiAnalystProps) {
   return (
     <>
       {/* Trigger — only show when panel is closed */}
-      <AnimatePresence>{!isOpen && triggerButton}</AnimatePresence>
+      <AnimatePresence>{!isOpen && !embedded && triggerButton}</AnimatePresence>
 
       {/* Panel */}
       <AnimatePresence>
         {isOpen && (
           <>
             {/* Backdrop on mobile */}
-            <motion.div
+            {!embedded && <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[600] md:hidden"
               onClick={() => setIsOpen(false)}
-            />
+            />}
 
             {/* Main Panel */}
             <motion.div
@@ -417,7 +421,9 @@ export default function AiAnalyst({ data }: AiAnalystProps) {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 40, scale: 0.95 }}
               transition={{ type: 'spring', stiffness: 300, damping: 25 }}
-              className="fixed bottom-0 right-0 md:bottom-6 md:right-6 z-[700] w-full md:w-[440px] h-[85vh] md:h-[680px] md:max-h-[85vh] flex flex-col md:rounded-2xl overflow-hidden"
+              className={embedded
+                ? 'relative w-full h-full min-h-[520px] flex flex-col rounded-2xl overflow-hidden'
+                : 'fixed bottom-0 right-0 md:bottom-6 md:right-6 z-[700] w-full md:w-[440px] h-[85vh] md:h-[680px] md:max-h-[85vh] flex flex-col md:rounded-2xl overflow-hidden'}
               style={{
                 background: 'linear-gradient(180deg, rgba(8, 10, 20, 0.96) 0%, rgba(6, 6, 12, 0.98) 100%)',
                 border: '1px solid rgba(212, 175, 55, 0.2)',
@@ -476,13 +482,15 @@ export default function AiAnalyst({ data }: AiAnalystProps) {
                       }`}
                     />
                   </button>
+                  {!embedded && (
                   <button
-                    onClick={() => setIsOpen(false)}
-                    className="p-1.5 rounded-lg hover:bg-[var(--hover-accent)] transition-colors group"
-                    title="Close"
-                  >
-                    <X className="w-3.5 h-3.5 text-[var(--text-muted)] group-hover:text-[var(--text-primary)]" />
-                  </button>
+                      onClick={() => setIsOpen(false)}
+                      className="p-1.5 rounded-lg hover:bg-[var(--hover-accent)] transition-colors group"
+                      title="Close"
+                    >
+                      <X className="w-3.5 h-3.5 text-[var(--text-muted)] group-hover:text-[var(--text-primary)]" />
+                    </button>
+                  )}
                 </div>
               </div>
 
