@@ -32,6 +32,8 @@ services:
       retries: 3
       start_period: 45s
     restart: unless-stopped
+    # Typical use is ~135 MB; the cap keeps a leak from squeezing the Pi.
+    mem_limit: 512m
 
   # Entity-graph lookups (sanctions, Wikidata, IP registries). Internal only: the
   # beacon container reaches it at http://beacon-intel:4000; no port is published.
