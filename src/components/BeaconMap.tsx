@@ -4,8 +4,12 @@ import { useEffect, useRef, useState, useCallback, memo } from 'react';
 import { greatCircle } from '@/lib/globe-tour.mjs';
 import type * as ML from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import { trueColorTiles, liveCloudTiles, LIVE_CLOUD_LAYERS, GIBS_ATTRIBUTION } from '@/lib/nasa-imagery.mjs';
-import { lightningTiles, FOREST_ALERT_TILES } from '@/lib/weather-layers.mjs';
+import { trueColorTiles, liveCloudTiles, refreshToken, LIVE_CLOUD_LAYERS, GIBS_ATTRIBUTION } from '@/lib/nasa-imagery.mjs';
+import { lightningTiles, meteosatTiles, FOREST_ALERT_TILES, METEOSAT_LAYER, METEOSAT_ATTRIBUTION } from '@/lib/weather-layers.mjs';
+import { framesToKeep, activeAt } from '@/lib/weather-timeline.mjs';
+import { alertArea } from '@/lib/nws-alerts.mjs';
+import { useTimeline } from '@/stores/timeline';
+import { useWeatherFrames, useNow } from '@/hooks/use-weather-frames';
 
 interface BeaconMapProps {
   data: any;
@@ -94,6 +98,23 @@ function computeSolarTerminator(): [number, number][] {
 
 const EMPTY_FC = { type: 'FeatureCollection' as const, features: [] };
 
+const MINUTE = 60_000;
+
+/**
+ * Empty marker layers that fix the drawing order of the weather rasters,
+ * bottom to top: base imagery, clouds, radar, lightning, then the day/night
+ * shade. Frames are inserted below their group's marker.
+ */
+const WX_ANCHORS = ['wx-anchor-imagery', 'wx-anchor-clouds', 'wx-anchor-radar', 'wx-anchor-lightning'] as const;
+type WxAnchor = (typeof WX_ANCHORS)[number];
+
+function fmtUtc(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toISOString().slice(5, 16).replace('T', ' ') + 'Z';
+}
+
 // Popup HTML is built from third-party feed text (headlines, callsigns, place
 // names), so every string property is HTML-escaped before interpolation and
 // URL-like fields must be http(s).
@@ -147,6 +168,12 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
   const prevStyleRef = useRef(mapStyle);
   const basemapRef = useRef<Basemap>('dark');
   const baseVisualValuesRef = useRef<Map<string, any>>(new Map());
+  // Map timeline: null while live. Timed rasters step through the frames each provider has.
+  const timelineTime = useTimeline((s) => s.time);
+  const timelinePlaying = useTimeline((s) => s.playing);
+  const { data: weatherFrames } = useWeatherFrames(!!(activeLayers.weather_radar || activeLayers.lightning || activeLayers.imagery_live));
+  const now = useNow(MINUTE);
+  const frameStacksRef = useRef<Map<string, Set<string>>>(new Map());
 
   // Create aircraft icon on canvas (for WebGL symbol layer)
   const createIcon = useCallback((map: ML.Map, id: string, color: string, size: number) => {
@@ -270,7 +297,7 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
       createDot(map, 'dot-fire', '#E65100', 10);
       createDot(map, 'dot-cctv', '#7E57C2', 10);
 
-      const sources = ['flights','military','jets','private-fl','satellites','earthquakes','gdelt','gps-jamming','day-night','cctv','fires','weather','infrastructure','maritime','maritime-choke','maritime-ships','live-news','sigint-news','conflict-zones', 'war-alerts-targets', 'war-alerts-lines', 'balloons', 'radiation', 'port-disruptions', 'conflict-events', 'ip-sweep-devices', 'ip-sweep-pulse', 'ip-sweep-connections', 'scan-targets', 'sdk-entities', 'sdk-links', 'malware-nodes', 'network-mesh', 'wiki-surges', 'launch-pads', 'track-trail', 'track-head'];
+      const sources = ['flights','military','jets','private-fl','satellites','earthquakes','gdelt','gps-jamming','day-night','cctv','fires','weather','infrastructure','maritime','maritime-choke','maritime-ships','live-news','sigint-news','conflict-zones', 'war-alerts-targets', 'war-alerts-lines', 'balloons', 'radiation', 'port-disruptions', 'conflict-events', 'ip-sweep-devices', 'ip-sweep-pulse', 'ip-sweep-connections', 'scan-targets', 'sdk-entities', 'sdk-links', 'malware-nodes', 'network-mesh', 'wiki-surges', 'launch-pads', 'track-trail', 'track-head', 'nws-alerts', 'spc-outlook'];
       sources.forEach(s => map.addSource(s, { type: 'geojson', data: EMPTY_FC }));
 
       // Warning icon generator (parameterized — eliminates 3x copy-paste)
@@ -313,6 +340,21 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
 
       // Day/Night
       map.addLayer({ id: 'day-night-fill', type: 'fill', source: 'day-night', paint: { 'fill-color': '#000022', 'fill-opacity': 0.35 }});
+      // Weather raster order markers (see WX_ANCHORS), stacked just below the day/night shade.
+      [...WX_ANCHORS].reverse().reduce<string>((above, id) => {
+        map.addLayer({ id, type: 'background', layout: { visibility: 'none' } }, above);
+        return id;
+      }, 'day-night-fill');
+
+      // SPC storm outlook (days 1-3) under NWS warning areas; both follow the timeline.
+      map.addLayer({ id: 'spc-fill', type: 'fill', source: 'spc-outlook', paint: { 'fill-color': ['get', 'fill'], 'fill-opacity': 0.28 }});
+      map.addLayer({ id: 'spc-line', type: 'line', source: 'spc-outlook', paint: { 'line-color': ['get', 'stroke'], 'line-width': 1.2, 'line-opacity': 0.9 }});
+      map.addLayer({ id: 'nws-fill', type: 'fill', source: 'nws-alerts', paint: {
+        'fill-color': ['get', 'color'], 'fill-opacity': ['interpolate', ['linear'], ['get', 'rank'], 0, 0.1, 4, 0.3],
+      }});
+      map.addLayer({ id: 'nws-line', type: 'line', source: 'nws-alerts', paint: {
+        'line-color': ['get', 'color'], 'line-width': ['interpolate', ['linear'], ['get', 'rank'], 0, 0.6, 4, 2], 'line-opacity': 0.9,
+      }});
 
       // Earthquakes — amber threat spectrum
       map.addLayer({ id: 'eq-circles', type: 'circle', source: 'earthquakes', paint: {
@@ -1169,6 +1211,53 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
       </div>`);
     });
 
+    // ── Weather areas (NWS alerts, SPC outlook) ──
+    // Areas cover a lot of the map, so a click on a point feature above them wins.
+    const pointUnder = (e: any) => {
+      // Only BEACON's own points count; the base map's place labels are symbols too.
+      return map.queryRenderedFeatures(e.point).some((f) => f.source !== 'carto' && (f.layer.type === 'circle' || f.layer.type === 'symbol'));
+    };
+    map.on('click', 'nws-fill', e => {
+      if (!e.features?.length || pointUnder(e)) return;
+      // Several alerts can cover one spot; list the strongest first.
+      const seen = new Set<string>();
+      const alerts = e.features.map((f) => f.properties as any).sort((a, b) => b.rank - a.rank).filter((a) => !seen.has(a.id) && seen.add(a.id)).slice(0, 4);
+      popup(e.lngLat, `<div style="${pStyle}border:1px solid ${safeProps(alerts[0]).color}55;max-width:360px;">${alerts.map((raw) => {
+        const p = safeProps(raw);
+        return `<div style="margin-bottom:10px;">
+          <div style="color:${p.color};font-size:13px;font-weight:700;margin-bottom:4px;">${p.event}</div>
+          ${p.headline ? `<div style="font-size:10px;color:#E8E6E0;line-height:1.4;margin-bottom:6px;">${p.headline}</div>` : ''}
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:9px;">
+            <div><span style="color:#5C5A54;">SEVERITY</span><br/><span style="color:${p.color};">${String(p.severity).toUpperCase()}</span></div>
+            <div><span style="color:#5C5A54;">ISSUED BY</span><br/><span style="color:#E8E6E0;">${p.sender || 'NWS'}</span></div>
+            <div><span style="color:#5C5A54;">FROM</span><br/><span style="color:#E8E6E0;">${fmtUtc(raw.onset)}</span></div>
+            <div><span style="color:#5C5A54;">UNTIL</span><br/><span style="color:#E8E6E0;">${fmtUtc(raw.ends)}</span></div>
+          </div>
+          ${p.area ? `<div style="font-size:9px;color:#9E9A90;margin-top:6px;line-height:1.4;">${String(p.area).slice(0, 220)}</div>` : ''}
+          ${p.url ? `<a href="${p.url}" target="_blank" rel="noopener noreferrer" style="${linkStyle}color:${p.color};border:1px solid ${p.color}66;background:${p.color}1A;">NWS ALERT ↗</a>` : ''}
+        </div>`;
+      }).join('')}</div>`);
+    });
+    map.on('click', 'spc-fill', e => {
+      if (!e.features?.length || pointUnder(e) || map.queryRenderedFeatures(e.point, { layers: ['nws-fill'] }).length) return;
+      const top = [...e.features].sort((a: any, b: any) => b.properties.risk - a.properties.risk)[0];
+      const raw = top.properties as any;
+      const p = safeProps(raw);
+      popup(e.lngLat, `<div style="${pStyle}border:1px solid ${p.stroke}66;">
+        <div style="color:${p.stroke};font-size:13px;font-weight:700;margin-bottom:4px;">${p.name}</div>
+        <div style="font-size:10px;color:#E8E6E0;margin-bottom:8px;">SPC convective outlook · Day ${p.day}</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:9px;">
+          <div><span style="color:#5C5A54;">VALID</span><br/><span style="color:#E8E6E0;">${fmtUtc(raw.valid)}</span></div>
+          <div><span style="color:#5C5A54;">UNTIL</span><br/><span style="color:#E8E6E0;">${fmtUtc(raw.expire)}</span></div>
+        </div>
+        <a href="https://www.spc.noaa.gov/products/outlook/day${Number(raw.day) || 1}otlk.html" target="_blank" rel="noopener noreferrer" style="${linkStyle}color:${p.stroke};border:1px solid ${p.stroke}66;background:${p.stroke}1A;">SPC OUTLOOK ↗</a>
+      </div>`);
+    });
+    ['nws-fill', 'spc-fill'].forEach(layer => {
+      map.on('mouseenter', layer, () => { map.getCanvas().style.cursor = 'pointer'; });
+      map.on('mouseleave', layer, () => { map.getCanvas().style.cursor = ''; });
+    });
+
     // ── Nuclear Infrastructure ──
     map.on('click', 'infra-dots', e => {
       if (!e.features?.length) return;
@@ -1399,8 +1488,31 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
 
   useEffect(() => {
     if (!mapReady) return;
-    setGeo('weather', activeLayers.weather && data.weather_events ? data.weather_events.map((w: any) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [w.lng, w.lat] }, properties: { title: w.title, type: w.type, icon: w.icon, severity: w.severity, source: w.source, id: w.id } })) : []);
-  }, [mapReady, data.weather_events, activeLayers.weather, setGeo]);
+    // With warning areas on, NWS alerts are drawn as areas, so their centre dots are left out.
+    const events = (data.weather_events || []).filter((w: any) => !(activeLayers.nws_alerts && w.provider === 'NOAA/NWS'));
+    setGeo('weather', activeLayers.weather ? events.map((w: any) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [w.lng, w.lat] }, properties: { title: w.title, type: w.type, icon: w.icon, severity: w.severity, source: w.source, id: w.id } })) : []);
+  }, [mapReady, data.weather_events, activeLayers.weather, activeLayers.nws_alerts, setGeo]);
+
+  // NWS alert areas and SPC outlooks in effect at the timeline's time.
+  useEffect(() => {
+    if (!mapReady) return;
+    const t = timelineTime ?? now;
+    const zones = data.nws_zones || {};
+    setGeo('nws-alerts', activeLayers.nws_alerts ? (data.nws_alerts || [])
+      .filter((a: any) => activeAt(a.onset, a.ends, t))
+      .map((a: any) => ({ a, geometry: alertArea(a, zones) }))
+      .filter(({ geometry }: any) => geometry)
+      .map(({ a, geometry }: any) => ({ type: 'Feature', geometry, properties: {
+        id: a.id, event: a.event, headline: a.headline, severity: a.severity, rank: a.rank, color: a.color,
+        area: a.area, sender: a.sender, onset: a.onset, ends: a.ends, url: a.url,
+      } })) : []);
+  }, [mapReady, data.nws_alerts, data.nws_zones, activeLayers.nws_alerts, timelineTime, now, setGeo]);
+
+  useEffect(() => {
+    if (!mapReady) return;
+    const t = timelineTime ?? now;
+    setGeo('spc-outlook', activeLayers.spc_outlook ? (data.spc_outlook || []).filter((f: any) => activeAt(f.properties?.valid, f.properties?.expire, t)) : []);
+  }, [mapReady, data.spc_outlook, activeLayers.spc_outlook, timelineTime, now, setGeo]);
 
   useEffect(() => {
     if (!mapReady) return;
@@ -1540,6 +1652,8 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
     setVis(['cctv-glow','cctv-dots','cctv-label'], activeLayers.cctv);
     setVis(['fires-heat'], activeLayers.fires);
     setVis(['weather-glow','weather-dots','weather-label'], activeLayers.weather);
+    setVis(['nws-fill','nws-line'], activeLayers.nws_alerts);
+    setVis(['spc-fill','spc-line'], activeLayers.spc_outlook);
     setVis(['infra-glow','infra-dots','infra-label'], activeLayers.infrastructure);
     setVis(['maritime-glow','maritime-dots','maritime-label'], activeLayers.maritime);
     setVis(['choke-glow','choke-dots','choke-label'], activeLayers.maritime);
@@ -1872,7 +1986,7 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
             tileSize: 256,
             maxzoom: 18,
           });
-          map.addLayer({ id: 'satellite-layer', type: 'raster', source: 'satellite-tiles', paint: { 'raster-opacity': 0.85 } }, 'day-night-fill');
+          map.addLayer({ id: 'satellite-layer', type: 'raster', source: 'satellite-tiles', paint: { 'raster-opacity': 0.85 } }, map.getLayer('wx-anchor-imagery') ? 'wx-anchor-imagery' : 'day-night-fill');
         } else {
           map.setLayoutProperty('satellite-layer', 'visibility', 'visible');
         }
@@ -1886,86 +2000,148 @@ function BeaconMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
     }
   }, [mapReady, mapStyle]);
 
-  // NASA GIBS imagery: yesterday's global true colour, and 10-minute live clouds
+  // NASA GIBS imagery: yesterday's global true colour (live clouds follow the timeline below)
   useEffect(() => {
     if (!mapReady || !mapRef.current) return;
     const map = mapRef.current;
-    const beforeId = map.getLayer('day-night-fill') ? 'day-night-fill' : undefined;
-
-    const ensureRaster = (id: string, tiles: string[], maxzoom: number, opacity: number, bounds?: [number, number, number, number]) => {
-      const source = map.getSource(id) as any;
-      if (!source) {
-        map.addSource(id, { type: 'raster', tiles, tileSize: 256, maxzoom, attribution: GIBS_ATTRIBUTION, ...(bounds ? { bounds } : {}) });
-        map.addLayer({ id: `${id}-layer`, type: 'raster', source: id, paint: { 'raster-opacity': opacity } }, beforeId);
-      } else if (typeof source.setTiles === 'function') {
-        source.setTiles(tiles);
-      }
-    };
-    const show = (id: string, visible: boolean) => {
-      if (map.getLayer(`${id}-layer`)) map.setLayoutProperty(`${id}-layer`, 'visibility', visible ? 'visible' : 'none');
-    };
+    const beforeId = map.getLayer('wx-anchor-imagery') ? 'wx-anchor-imagery' : map.getLayer('day-night-fill') ? 'day-night-fill' : undefined;
 
     const apply = () => {
       try {
-        if (activeLayers.imagery_truecolor) ensureRaster('gibs-truecolor', trueColorTiles(), 9, 0.95);
-        show('gibs-truecolor', !!activeLayers.imagery_truecolor);
-        for (const def of LIVE_CLOUD_LAYERS) {
-          const id = `gibs-${def.id}`;
-          if (activeLayers.imagery_live) ensureRaster(id, liveCloudTiles(def), def.maxzoom, 0.8, def.bounds as [number, number, number, number] | undefined);
-          show(id, !!activeLayers.imagery_live);
+        if (activeLayers.imagery_truecolor) {
+          const tiles = trueColorTiles();
+          const source = map.getSource('gibs-truecolor') as any;
+          if (!source) {
+            map.addSource('gibs-truecolor', { type: 'raster', tiles, tileSize: 256, maxzoom: 9, attribution: GIBS_ATTRIBUTION });
+            map.addLayer({ id: 'gibs-truecolor-layer', type: 'raster', source: 'gibs-truecolor', paint: { 'raster-opacity': 0.95 } }, beforeId);
+          } else if (typeof source.setTiles === 'function') {
+            source.setTiles(tiles);
+          }
         }
+        if (map.getLayer('gibs-truecolor-layer')) map.setLayoutProperty('gibs-truecolor-layer', 'visibility', activeLayers.imagery_truecolor ? 'visible' : 'none');
       } catch (e) {
         console.warn('[BEACON] NASA imagery layer failed:', e);
       }
     };
     apply();
-    if (!activeLayers.imagery_truecolor && !activeLayers.imagery_live) return;
-    // Pick up new live frames every 10 minutes and roll the true-colour date at midnight UTC.
-    const iv = setInterval(apply, 10 * 60_000);
+    if (!activeLayers.imagery_truecolor) return;
+    // Roll the true-colour date at midnight UTC.
+    const iv = setInterval(apply, 30 * 60_000);
     return () => clearInterval(iv);
-  }, [mapReady, activeLayers.imagery_truecolor, activeLayers.imagery_live]);
+  }, [mapReady, activeLayers.imagery_truecolor]);
 
-  // Weather & environment rasters: radar, lightning density, forest-loss alerts
+  /**
+   * Keep one raster source+layer per frame for a timed group, shown by opacity
+   * so switching frames is instant and the next frames preload. Frames that
+   * fall out of `frames` are removed.
+   */
+  const syncFrameStack = useCallback((group: string, anchor: WxAnchor, frames: { key: string; tiles: string[] }[], currentKey: string | null,
+    opts: { maxzoom: number; opacity: number; attribution: string; bounds?: [number, number, number, number] }) => {
+    const map = mapRef.current;
+    if (!map) return;
+    const beforeId = map.getLayer(anchor) ? anchor : undefined;
+    const prev = frameStacksRef.current.get(group) ?? new Set<string>();
+    const next = new Set<string>();
+    for (const f of frames) {
+      const id = `${group}@${f.key}`;
+      next.add(id);
+      if (!map.getSource(id)) {
+        map.addSource(id, { type: 'raster', tiles: f.tiles, tileSize: 256, maxzoom: opts.maxzoom, attribution: opts.attribution, ...(opts.bounds ? { bounds: opts.bounds } : {}) });
+        map.addLayer({ id: `${id}-layer`, type: 'raster', source: id, paint: { 'raster-opacity': 0, 'raster-fade-duration': 0 } }, beforeId);
+      }
+      map.setPaintProperty(`${id}-layer`, 'raster-opacity', f.key === currentKey ? opts.opacity : 0);
+    }
+    for (const id of prev) {
+      if (next.has(id)) continue;
+      if (map.getLayer(`${id}-layer`)) map.removeLayer(`${id}-layer`);
+      if (map.getSource(id)) map.removeSource(id);
+    }
+    frameStacksRef.current.set(group, next);
+  }, []);
+
+  // Timed weather rasters: satellite clouds, rain radar and lightning follow the timeline.
+  // Live shows each provider's newest frame; a chosen time shows the frame
+  // covering it (or nothing, if the provider has none that close).
+  useEffect(() => {
+    if (!mapReady || !mapRef.current) return;
+    const t = timelineTime;
+    const future = t !== null && t > Date.now();
+    // While scrubbing or playing, keep the next frames loaded too.
+    const preload = t === null ? 0 : timelinePlaying ? 4 : 2;
+    const pick = (times: number[], toleranceMs: number) => (future ? { keep: [], current: null } : framesToKeep(times, t, toleranceMs, preload));
+    const nowDate = new Date(now);
+
+    try {
+      // Clouds: GOES-West, GOES-East, Himawari (NASA GIBS) and Meteosat (EUMETSAT).
+      const cloudDefs = [
+        ...LIVE_CLOUD_LAYERS.map((def) => ({ id: def.id, maxzoom: def.maxzoom, bounds: def.bounds, attribution: GIBS_ATTRIBUTION, toleranceMs: 40 * MINUTE,
+          tiles: (time: number | null) => liveCloudTiles(def, nowDate, time) })),
+        { id: METEOSAT_LAYER.id, maxzoom: METEOSAT_LAYER.maxzoom, bounds: METEOSAT_LAYER.bounds, attribution: METEOSAT_ATTRIBUTION, toleranceMs: 30 * MINUTE,
+          tiles: (time: number | null) => meteosatTiles(time === null ? null : new Date(time).toISOString()) },
+      ];
+      for (const def of cloudDefs) {
+        const group = `clouds-${def.id}`;
+        if (!activeLayers.imagery_live) { syncFrameStack(group, 'wx-anchor-clouds', [], null, { ...def, opacity: 0.8 }); continue; }
+        const times = weatherFrames?.clouds?.[def.id] ?? [];
+        let frames: { key: string; tiles: string[] }[];
+        let current: string | null;
+        if (!times.length && t === null) {
+          // No frame list (yet): the provider's newest image, refreshed every 10 minutes.
+          current = `latest-${refreshToken(nowDate)}`;
+          frames = [{ key: current, tiles: def.tiles(null) }];
+        } else {
+          const sel = pick(times, def.toleranceMs);
+          frames = sel.keep.map((ms) => ({ key: String(ms), tiles: def.tiles(ms) }));
+          current = sel.current === null ? null : String(sel.current);
+        }
+        syncFrameStack(group, 'wx-anchor-clouds', frames, current, { maxzoom: def.maxzoom, opacity: 0.8, attribution: def.attribution, bounds: def.bounds as [number, number, number, number] | undefined });
+      }
+
+      // Rain radar (RainViewer): the frames carry their own tile URLs.
+      const radar = weatherFrames?.radar;
+      const radarOpts = { maxzoom: radar?.maxzoom ?? 7, opacity: 0.7, attribution: 'Radar: RainViewer' };
+      if (activeLayers.weather_radar && radar?.frames?.length) {
+        const sel = pick(radar.frames.map((f) => f.time), 20 * MINUTE);
+        const byTime = new Map(radar.frames.map((f) => [f.time, f.tiles]));
+        syncFrameStack('radar', 'wx-anchor-radar', sel.keep.map((ms) => ({ key: String(ms), tiles: byTime.get(ms) || [] })), sel.current === null ? null : String(sel.current), radarOpts);
+      } else {
+        syncFrameStack('radar', 'wx-anchor-radar', [], null, radarOpts);
+      }
+
+      // Lightning density (NOAA nowCOAST, 15-minute maps).
+      const lightningOpts = { maxzoom: 10, opacity: 0.9, attribution: 'Lightning: NOAA nowCOAST (NLDN/GLD360)' };
+      if (activeLayers.lightning) {
+        const times = weatherFrames?.lightning ?? [];
+        if (!times.length && t === null) {
+          const key = `latest-${refreshToken(nowDate, 15)}`;
+          syncFrameStack('lightning', 'wx-anchor-lightning', [{ key, tiles: lightningTiles(nowDate) }], key, lightningOpts);
+        } else {
+          const sel = pick(times, 30 * MINUTE);
+          syncFrameStack('lightning', 'wx-anchor-lightning', sel.keep.map((ms) => ({ key: String(ms), tiles: lightningTiles(nowDate, new Date(ms).toISOString()) })), sel.current === null ? null : String(sel.current), lightningOpts);
+        }
+      } else {
+        syncFrameStack('lightning', 'wx-anchor-lightning', [], null, lightningOpts);
+      }
+    } catch (e) {
+      console.warn('[BEACON] Timed weather layer failed:', e);
+    }
+  }, [mapReady, timelineTime, timelinePlaying, weatherFrames, now, activeLayers.imagery_live, activeLayers.weather_radar, activeLayers.lightning, syncFrameStack]);
+
+  // Forest-loss alerts (Global Forest Watch), a static raster
   useEffect(() => {
     if (!mapReady || !mapRef.current) return;
     const map = mapRef.current;
-    const beforeId = map.getLayer('day-night-fill') ? 'day-night-fill' : undefined;
-    let cancelled = false;
-
-    const setRaster = (id: string, visible: boolean, tiles: string[] | null, opts: { maxzoom: number; opacity: number; attribution: string }) => {
-      const layerId = `${id}-layer`;
-      if (visible && tiles?.length) {
-        const source = map.getSource(id) as any;
-        if (!source) {
-          map.addSource(id, { type: 'raster', tiles, tileSize: 256, maxzoom: opts.maxzoom, attribution: opts.attribution });
-          map.addLayer({ id: layerId, type: 'raster', source: id, paint: { 'raster-opacity': opts.opacity } }, beforeId);
-        } else if (typeof source.setTiles === 'function') {
-          source.setTiles(tiles);
-        }
+    const layerId = 'gfw-glad-layer';
+    try {
+      if (activeLayers.forest_alerts && !map.getSource('gfw-glad')) {
+        map.addSource('gfw-glad', { type: 'raster', tiles: FOREST_ALERT_TILES, tileSize: 256, maxzoom: 12, attribution: 'Forest alerts: UMD GLAD / Global Forest Watch' });
+        map.addLayer({ id: layerId, type: 'raster', source: 'gfw-glad', paint: { 'raster-opacity': 0.85 } }, map.getLayer('wx-anchor-radar') ? 'wx-anchor-radar' : undefined);
       }
-      if (map.getLayer(layerId)) map.setLayoutProperty(layerId, 'visibility', visible ? 'visible' : 'none');
-    };
-
-    const apply = async () => {
-      try {
-        let radarTiles: string[] | null = null;
-        if (activeLayers.weather_radar) {
-          const res = await fetch('/api/weather-radar');
-          if (res.ok) radarTiles = (await res.json()).tiles;
-        }
-        if (cancelled) return;
-        setRaster('rainviewer', !!activeLayers.weather_radar, radarTiles, { maxzoom: 7, opacity: 0.7, attribution: 'Radar: RainViewer' });
-        setRaster('nowcoast-lightning', !!activeLayers.lightning, lightningTiles(), { maxzoom: 10, opacity: 0.9, attribution: 'Lightning: NOAA nowCOAST (NLDN/GLD360)' });
-        setRaster('gfw-glad', !!activeLayers.forest_alerts, FOREST_ALERT_TILES, { maxzoom: 12, opacity: 0.85, attribution: 'Forest alerts: UMD GLAD / Global Forest Watch' });
-      } catch (e) {
-        console.warn('[BEACON] Weather overlay failed:', e);
-      }
-    };
-    apply();
-    if (!activeLayers.weather_radar && !activeLayers.lightning) return () => { cancelled = true; };
-    const iv = setInterval(apply, 10 * 60_000);
-    return () => { cancelled = true; clearInterval(iv); };
-  }, [mapReady, activeLayers.weather_radar, activeLayers.lightning, activeLayers.forest_alerts]);
+      if (map.getLayer(layerId)) map.setLayoutProperty(layerId, 'visibility', activeLayers.forest_alerts ? 'visible' : 'none');
+    } catch (e) {
+      console.warn('[BEACON] Forest alert layer failed:', e);
+    }
+  }, [mapReady, activeLayers.forest_alerts]);
 
   // Surface wind arrows (Open-Meteo 10° grid)
   useEffect(() => {

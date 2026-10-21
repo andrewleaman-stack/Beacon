@@ -12,6 +12,11 @@ export interface LayerDef {
   dataKey?: string;
   /** Shown instead of a count when the layer needs setup. */
   note?: string;
+  /**
+   * The layer follows the map timeline: 'past' has observations behind now,
+   * 'future' forecasts ahead of it, 'both' either side.
+   */
+  time?: 'past' | 'future' | 'both';
 }
 
 export interface LayerGroup {
@@ -27,8 +32,10 @@ export const LAYER_GROUPS: LayerGroup[] = [
     layers: [
       { key: 'earthquakes', label: 'Earthquakes', hint: 'Last 24 hours, USGS', color: '#F9A825', dataKey: 'earthquakes' },
       { key: 'weather', label: 'Severe weather', hint: 'NWS warnings and NASA events', color: '#A78BFA', dataKey: 'weather_events' },
-      { key: 'weather_radar', label: 'Rain radar', hint: 'Updated every 10 minutes', color: '#4C8DFF' },
-      { key: 'lightning', label: 'Lightning', hint: 'Americas, 15-minute density', color: '#FFE066' },
+      { key: 'nws_alerts', label: 'Weather warnings', hint: 'U.S. warnings, watches and advisories, with areas', color: '#F4511E', dataKey: 'nws_alerts', time: 'both' },
+      { key: 'spc_outlook', label: 'Storm outlook', hint: 'U.S. severe-storm risk, next 3 days', color: '#66A366', dataKey: 'spc_outlook', time: 'future' },
+      { key: 'weather_radar', label: 'Rain radar', hint: 'Last 2 hours, every 10 minutes', color: '#4C8DFF', time: 'past' },
+      { key: 'lightning', label: 'Lightning', hint: 'Americas, 15-minute density', color: '#FFE066', time: 'past' },
       { key: 'wind', label: 'Surface wind', hint: 'Arrows coloured by speed', color: '#90CAF9' },
       { key: 'fires', label: 'Active fires', hint: 'NASA FIRMS satellite detections', color: '#E65100', dataKey: 'fires' },
       { key: 'forest_alerts', label: 'Forest-loss alerts', hint: 'Global Forest Watch', color: '#EC407A' },
@@ -82,11 +89,14 @@ export const LAYER_GROUPS: LayerGroup[] = [
     label: 'Map style',
     layers: [
       { key: 'day_night', label: 'Day / night shading', color: '#448AFF' },
-      { key: 'imagery_live', label: 'Live clouds', hint: 'Weather satellites, 10 minutes', color: '#90CAF9' },
+      { key: 'imagery_live', label: 'Live clouds', hint: 'Infrared satellites, about an hour behind', color: '#90CAF9', time: 'past' },
       { key: 'imagery_truecolor', label: 'Satellite photo', hint: 'NASA, yesterday', color: '#81C784' },
     ],
   },
 ];
+
+/** Keys of layers that follow the map timeline. */
+export const TIMED_LAYER_KEYS = LAYER_GROUPS.flatMap((g) => g.layers).filter((l) => l.time).map((l) => l.key);
 
 /** Layers that are part of the base map rather than data; presets leave them alone. */
 export const STYLE_LAYER_KEYS = ['day_night', 'imagery_live', 'imagery_truecolor'];
@@ -101,6 +111,7 @@ export interface MapPreset {
 export const MAP_PRESETS: MapPreset[] = [
   { id: 'overview', label: 'Overview', description: 'Quakes, incidents and severe weather', layers: ['earthquakes', 'global_incidents', 'weather', 'launches'] },
   { id: 'hazards', label: 'Hazards', description: 'Quakes, weather, radar, fires', layers: ['earthquakes', 'weather', 'weather_radar', 'fires', 'lightning'] },
+  { id: 'weather', label: 'Weather', description: 'Radar, lightning, warnings and storm outlook', layers: ['weather_radar', 'lightning', 'nws_alerts', 'spc_outlook'] },
   { id: 'air-sea', label: 'Air & Sea', description: 'Flights, ships, satellites', layers: ['flights', 'military', 'maritime', 'satellites', 'launches'] },
   { id: 'intel', label: 'Intel', description: 'Incidents, conflict, surges, news', layers: ['global_incidents', 'conflict_events', 'wiki_surges', 'news_intel', 'gps_jamming'] },
   { id: 'infra', label: 'Infrastructure', description: 'Nuclear, cables, ports, cyber', layers: ['infrastructure', 'sdk_sea', 'port_disruptions', 'malware'] },

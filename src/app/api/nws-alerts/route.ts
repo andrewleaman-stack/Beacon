@@ -1,80 +1,49 @@
 import { NextResponse } from 'next/server';
+import { createZoneCache, fetchNwsAlerts } from '@/lib/nws-alerts.mjs';
+
+type NwsResult = Awaited<ReturnType<typeof fetchNwsAlerts>>;
+
+export const dynamic = 'force-dynamic';
 
 /**
- * BEACON — Weather Alerts v1 (NWS / SPC)
- * 
- * fetch_allowed: true
- * embed_allowed: false
- * 
- * Primary sources:
- * - National Weather Service (NWS) API: /alerts/active
- * - Storm Prediction Center (SPC): Outlooks for Severe Weather
- * 
- * Covers:
- * - Severe Thunderstorm Warnings
- * - Tornado Warnings
- * - Flash Flood Warnings
- * - Blizzard / Winter Storm Warnings
- * - SPC Convective Outlooks (Slight, Enhanced, Moderate, High risk)
+ * BEACON — U.S. weather warnings, watches and advisories (NWS), with map areas.
+ * Alerts refresh every 2 minutes; zone outlines are cached for the life of the
+ * process (see lib/nws-alerts.mjs).
  */
+const TTL_MS = 2 * 60_000;
+const zoneCache = createZoneCache();
+// `complete` is false when zones were still loading as the result was built.
+let cached: (NwsResult & { at: number; complete: boolean }) | null = null;
+let inflight: Promise<NwsResult> | null = null;
 
-const NWS_API_BASE = 'https://api.weather.gov';
+function body({ alerts, zones, at }: NwsResult & { at: number }, status: string) {
+  return {
+    alerts,
+    /** Zone outlines by id, each sent once; alerts list the ids in `zones`. */
+    zones,
+    total: alerts.length,
+    mapped: alerts.filter((a) => a.areaSource).length,
+    warnings: alerts.filter((a) => a.severity === 'Severe' || a.severity === 'Extreme').length,
+    watches: alerts.filter((a) => /watch/i.test(a.event)).length,
+    timestamp: new Date(at).toISOString(),
+    source: 'NOAA/NWS',
+    status,
+  };
+}
 
 export async function GET() {
   try {
-    // Note: NWS API requires a User-Agent header per their terms
-    const response = await fetch(`${NWS_API_BASE}/alerts/active`, {
-      headers: {
-        'User-Agent': 'BEACON-Situational-Awareness-Workbench (contact: andrewleaman)',
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error(`NWS API responded with ${response.status}`);
+    // Rebuild soon after a result made while zones were loading, so areas fill in quickly after a restart.
+    const ttl = cached && !cached.complete ? 20_000 : TTL_MS;
+    if (!cached || Date.now() - cached.at > ttl) {
+      inflight ??= fetchNwsAlerts({ zoneCache }).finally(() => { inflight = null; });
+      const result = await inflight;
+      cached = { ...result, at: Date.now(), complete: zoneCache.pending === 0 };
     }
-
-    const data = await response.json();
-
-    // Filter for operationally useful alerts (Severe/Warning)
-    // We exclude 'Advisories' if the list is too long, focusing on 'Warnings' and 'Watches'
-    const activeAlerts = data.features.map((feature: any) => ({
-      id: feature.id,
-      event: feature.properties.event,
-      area: feature.properties.areaDesc,
-      severity: feature.properties.severity,
-      urgency: feature.properties.urgency,
-      certainty: feature.properties.certainty,
-      startTime: feature.properties.effective,
-      endTime: feature.properties.expires,
-      description: feature.properties.description,
-      geometry: feature.geometry,
-      // Source link to NWS alert page
-      url: feature.properties.instruction ? `${NWS_API_BASE}/alerts/${feature.id}` : null,
-      category: feature.properties.category,
-    }));
-
-    // Separate SPC Outlooks if available (simplified for v1)
-    const alertsSummary = {
-      total: activeAlerts.length,
-      warnings: activeAlerts.filter((a: { severity?: string }) => a.severity === 'Severe' || a.severity === 'Extreme').length,
-      watches: activeAlerts.filter((a: { event?: string }) => a.event?.toLowerCase().includes('watch')).length,
-      alerts: activeAlerts,
-    };
-
-    return NextResponse.json({
-      ...alertsSummary,
-      timestamp: new Date().toISOString(),
-    }, {
-      headers: {
-        'Cache-Control': 'public, s-maxage=600, stale-while-revalidate=1200',
-      },
-    });
+    return NextResponse.json(body(cached, 'live'));
   } catch (error: any) {
-    console.error('NWS Alerts Error:', error);
-    return NextResponse.json({
-      error: 'NWS Alerts Unavailable',
-      message: error.message,
-      timestamp: new Date().toISOString(),
-    }, { status: 500 });
+    console.error('[BEACON] NWS alerts error:', error?.message || error);
+    if (cached) return NextResponse.json(body(cached, 'stale'));
+    return NextResponse.json({ alerts: [], zones: {}, total: 0, error: 'NWS alerts unavailable', message: error?.message, status: 'error' }, { status: 502 });
   }
 }
