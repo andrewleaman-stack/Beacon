@@ -1,12 +1,14 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Layers, Globe2, Map as MapIcon, Satellite, Moon, Home, Orbit } from 'lucide-react';
 import LayerSheet from './LayerSheet';
 import MapSearch, { type SearchHit } from './MapSearch';
 import RegionPanel from './RegionPanel';
+import WeatherTimeline from './WeatherTimeline';
 import TrackPanel from '@/components/TrackPanel';
 import { LAYER_GROUPS, MAP_PRESETS, STYLE_LAYER_KEYS, activePresetId, applyPreset } from '@/lib/layer-catalog';
+import { useTimeline } from '@/stores/timeline';
 import type { ShellProps } from './types';
 
 /** Legend built from the layers that are actually on, so it always matches the map. */
@@ -31,6 +33,14 @@ export default function MapSpace(props: ShellProps & { onStartTour?: () => void 
   const [showLayers, setShowLayers] = useState(false);
   const preset = activePresetId(activeLayers);
   const legend = activeLegend(activeLayers);
+  // The timeline shows while any time-aware layer is on; turning them all off returns the map to live.
+  const timedOn = LAYER_GROUPS.flatMap((g) => g.layers).filter((l) => l.time && activeLayers[l.key]);
+  const pastOnly = timedOn.filter((l) => l.time === 'past').map((l) => l.label);
+  const goLive = useTimeline((s) => s.goLive);
+  const timelineLive = useTimeline((s) => s.time === null);
+  useEffect(() => {
+    if (!timedOn.length && !timelineLive) goLive();
+  }, [timedOn.length, timelineLive, goLive]);
 
   const pick = (hit: SearchHit) => {
     flyTo(hit.lat, hit.lng, hit.kind === 'place' ? 9 : 8);
@@ -81,6 +91,12 @@ export default function MapSpace(props: ShellProps & { onStartTour?: () => void 
           {presetRow}
         </div>
         <div className="absolute" style={{ right: 12, top: 132, zIndex: 25 }}>{controls}</div>
+        {!detail && timedOn.length > 0 && (
+          // Beside the shell's settings button (44 px at right 12), which sits above the floating tabs in the Atlas themes.
+          <div className="absolute" style={{ left: 8, right: 64, bottom: layout === 'phone' && (props.theme === 'atlas' || props.theme === 'atlas-day') ? 96 : 8, zIndex: 30 }}>
+            <WeatherTimeline pastLayers={pastOnly} compact />
+          </div>
+        )}
         {detail && (
           <div className="absolute" style={{ left: 0, right: 0, bottom: 0, maxHeight: '55%', zIndex: 35, padding: '0 8px 8px', display: 'flex' }}>
             <div style={{ width: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }}>{detail}</div>
@@ -125,7 +141,13 @@ export default function MapSpace(props: ShellProps & { onStartTour?: () => void 
         </div>
       )}
 
-      <div aria-label="Legend" className="absolute flex items-center gap-3.5" style={{ left: showLayers ? 362 : 16, bottom: 16, zIndex: 30, padding: '10px 14px', borderRadius: 'var(--ui-radius)', background: 'var(--ui-raised)', border: '1px solid var(--ui-line)', fontSize: 13, color: 'var(--ui-text-2)' }}>
+      {timedOn.length > 0 && (
+        <div className="absolute" style={{ left: showLayers ? 362 : 16, right: detail ? 412 : 16, bottom: 16, zIndex: 30, maxWidth: 900, transition: 'left 0.16s ease-out' }}>
+          <WeatherTimeline pastLayers={pastOnly} />
+        </div>
+      )}
+
+      <div aria-label="Legend" className="absolute flex items-center gap-3.5" style={{ left: showLayers ? 362 : 16, bottom: timedOn.length > 0 ? 112 : 16, zIndex: 30, padding: '10px 14px', borderRadius: 'var(--ui-radius)', background: 'var(--ui-raised)', border: '1px solid var(--ui-line)', fontSize: 13, color: 'var(--ui-text-2)' }}>
         {legend.slice(0, 6).map((l) => (
           <span key={l.key} className="flex items-center gap-1.5"><span style={{ width: 10, height: 10, borderRadius: '50%', background: l.color }} />{l.label}</span>
         ))}

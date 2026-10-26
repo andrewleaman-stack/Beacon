@@ -168,6 +168,8 @@ export default function Dashboard() {
     earthquakes: true,
     fires: false,
     weather: false,
+    nws_alerts: false,
+    spc_outlook: false,
     weather_radar: false,
     lightning: false,
     wind: false,
@@ -544,6 +546,17 @@ export default function Dashboard() {
       fetchEndpoint('/api/weather', d => ({ weather_events: d.events }));
       layerFetchedRef.current.add('weather');
     }
+    // U.S. weather warnings with areas, and SPC storm outlooks (refreshed by the polling effect)
+    if (activeLayers.nws_alerts && !layerFetchedRef.current.has('nws_alerts')) {
+      fetchEndpoint('/api/nws-alerts', d => ({ nws_alerts: d.alerts, nws_zones: d.zones }));
+      // After a server restart, zone outlines load in the background; pick them up soon after.
+      setTimeout(() => fetchEndpoint('/api/nws-alerts', d => ({ nws_alerts: d.alerts, nws_zones: d.zones })), 25_000);
+      layerFetchedRef.current.add('nws_alerts');
+    }
+    if (activeLayers.spc_outlook && !layerFetchedRef.current.has('spc_outlook')) {
+      fetchEndpoint('/api/spc-outlook', d => ({ spc_outlook: d.features }));
+      layerFetchedRef.current.add('spc_outlook');
+    }
     // Infrastructure
     if (activeLayers.infrastructure && !layerFetchedRef.current.has('infrastructure')) {
       fetchEndpoint('/api/infrastructure', d => ({ infrastructure: d.infrastructure }));
@@ -607,6 +620,12 @@ export default function Dashboard() {
     }
     if (activeLayers.radiation) {
       intervals.push(setInterval(() => fetchEndpoint('/api/radiation', d => ({ radiation: d.stations })), 300000)); // 5m
+    }
+    if (activeLayers.nws_alerts) {
+      intervals.push(setInterval(() => fetchEndpoint('/api/nws-alerts', d => ({ nws_alerts: d.alerts, nws_zones: d.zones })), 2 * 60_000));
+    }
+    if (activeLayers.spc_outlook) {
+      intervals.push(setInterval(() => fetchEndpoint('/api/spc-outlook', d => ({ spc_outlook: d.features })), 15 * 60_000));
     }
     if (activeLayers.maritime) {
       intervals.push(setInterval(() => fetchEndpoint('/api/maritime', d => ({ maritime_ports: d.ports, maritime_chokepoints: d.chokepoints, maritime_ships: d.ships })), 10000)); // 10s
