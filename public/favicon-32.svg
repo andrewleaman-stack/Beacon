@@ -1,18 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
-  <defs>
-    <radialGradient id="iris" cx="50%" cy="50%" r="50%">
-      <stop offset="0%" stop-color="#F5D76E"/>
-      <stop offset="100%" stop-color="#D4AF37"/>
-    </radialGradient>
-  </defs>
-  <rect width="32" height="32" rx="6" fill="#06060C"/>
-  <!-- Eye shape -->
-  <path d="M3 15 Q10 7 16 9 Q22 7 29 15 Q22 23 16 21 Q10 23 3 15Z" 
-        fill="rgba(212,175,55,0.1)" stroke="#D4AF37" stroke-width="1.2"/>
-  <!-- Iris -->
-  <circle cx="16" cy="15" r="4" fill="url(#iris)"/>
-  <!-- Pupil -->
-  <circle cx="16" cy="15" r="1.5" fill="#06060C"/>
-  <!-- Teardrop -->
-  <path d="M16 19 L14 25 L13 23" stroke="#D4AF37" stroke-width="1.2" fill="none" stroke-linecap="round"/>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-48 -48 96 96"><title>beacon</title><rect x="-48" y="-48" width="96" height="96" rx="22" fill="#0F1115"/><circle r="33" fill="none" stroke="#3DDBC4" stroke-width="3"/><g fill="none" stroke="#3DDBC4" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"><path d="M-9.84 31.50L-4 -5M4 -5L9.84 31.50"/><path d="M-5.92 7H5.92M-7.36 16H7.36"/><rect x="-4.5" y="-14" width="9" height="9" rx="1.5"/><path d="M-5.5 -14L0 -19.5L5.5 -14"/></g><circle cy="-9.5" r="2.4" fill="#F2B544"/><g fill="none" stroke="#3DDBC4" stroke-width="2.2" stroke-linecap="round"><path d="M-10 -15a8 8 0 0 0 0 11M10 -15a8 8 0 0 1 0 11"/><path d="M-15 -19a14 14 0 0 0 0 19M15 -19a14 14 0 0 1 0 19" opacity="0.5"/></g></svg>
