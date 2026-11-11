@@ -65,3 +65,24 @@ test('the live title is read and unescaped', () => {
   const html = page('"isLive":true,"playableInEmbed":true').replace('<script>', '<meta name="title" content="Strikes on Gaza &amp; Lebanon: LIVE"><script>');
   assert.equal(parseLivePage(html, CH).title, 'Strikes on Gaza & Lebanon: LIVE');
 });
+
+test('a parsed result does not keep the whole page in memory', async () => {
+  const v8 = await import('node:v8');
+  const vm = await import('node:vm');
+  v8.setFlagsFromString('--expose-gc');
+  const gc = vm.runInNewContext('gc');
+  // ~3 MB pages, like YouTube's real /live HTML. A title with no HTML entities is a plain slice of
+  // the page, so 40 of them would pin ~120 MB if the title kept its parent.
+  const padding = 'x'.repeat(3 * 2 ** 20);
+  const bigPage = (i) => `<html><link rel="canonical" href="https://www.youtube.com/watch?v=gCNeDWCI0vo">`
+    + `<meta name="title" content="Live: channel ${i} rolling coverage and analysis">`
+    + `<script>{"channelId":"${CH}","isLive":true,"playableInEmbed":true}</script>${padding}${i}</html>`;
+  gc();
+  const before = process.memoryUsage().heapUsed;
+  const kept = [];
+  for (let i = 0; i < 40; i++) kept.push(parseLivePage(bigPage(i), CH));
+  gc();
+  const grownMb = (process.memoryUsage().heapUsed - before) / 2 ** 20;
+  assert.equal(kept[7].title, 'Live: channel 7 rolling coverage and analysis');
+  assert.ok(grownMb < 10, `results retained ${grownMb.toFixed(1)} MB of page HTML`);
+});

@@ -17,8 +17,20 @@ export function parseLivePage(html, channelId) {
   const live = /"isLive":true/.test(html) || /"isLiveNow":true/.test(html);
   const embeddable = /"playableInEmbed":true/.test(html);
   const t = html.match(/<meta name="title" content="([^"]*)"/);
-  const title = t ? decodeEntities(t[1]).slice(0, 200) : null;
-  return { videoId: canonical[1], live, embeddable: live && embeddable, title };
+  const title = t ? detach(decodeEntities(t[1]).slice(0, 200)) : null;
+  return { videoId: detach(canonical[1]), live, embeddable: live && embeddable, title };
+}
+
+/**
+ * Copy a substring into its own memory. V8 keeps a regex match or slice of a
+ * long string as a view into the parent, so storing the ~40-character title
+ * would keep the whole ~3 MB YouTube page alive. The route caches one result
+ * per channel (68 of them), which pinned ~200 MB of HTML and ran the server
+ * out of heap.
+ * @param {string} s
+ */
+function detach(s) {
+  return Buffer.from(s, 'utf8').toString('utf8');
 }
 
 /** @param {string} s */

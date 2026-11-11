@@ -16,6 +16,7 @@
     "test:port-disruptions": "node --test scripts/port-disruptions.test.mjs",
     "test:situations": "node --test scripts/situations.test.mjs",
     "test:live-feeds": "node --test scripts/live-feeds.test.mjs",
+    "test:live-news": "node --test scripts/live-news.test.mjs",
     "test:credentialed-feeds": "node --test scripts/credentialed-feeds.test.mjs",
     "test:hazard-feeds": "node --test scripts/hazard-feeds.test.mjs",
     "test:view-hotkeys": "node --test scripts/view-hotkeys.test.mjs",
